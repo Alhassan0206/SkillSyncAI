@@ -1,0 +1,686 @@
+SkillSync AI — Complete PRD (Expanded, Exhaustive)
+0. Document version & meta
+
+Project: SkillSync AI
+
+Author: Grandpa (technical lead)
+
+Version: 1.1 (Complete requirements + full sitemap with 3 dashboards)
+
+Date: (use when exporting)
+
+Status: Final — developer handoff
+
+1. Executive summary / Project brief (single sentence)
+
+SkillSync AI is an AI-driven multi-tenant web platform that analyzes people’s skills and project requirements, generates optimized learning and hiring roadmaps, and automatically matches job-seekers with employers — exposed via three dashboards (Job-Seeker Dashboard, Employer Dashboard, Platform Admin Dashboard) and a public marketing site.
+
+2. High-level goals & success metrics
+
+Goals
+
+Reduce time-to-hire and improve match quality for employers.
+
+Increase users’ employability via personalized skill roadmaps.
+
+Reach $50K–$100K MRR through subscriptions and B2B API licensing.
+
+Core Success Metrics
+
+MRR, Churn rate, CAC, LTV
+
+Match Acceptance Rate (target ≥ 40% → 60% over time)
+
+Time from Project Posted → First Hire (target reduce by 50%)
+
+Monthly Active Users (MAU) and DAU/MAU ratio
+
+Average Fit Score of hired matches
+
+3. Personas
+
+Job-Seeker (Individual) — early-career to mid-career professionals searching for jobs and learning paths.
+
+Recruiter / Hiring Manager (Employer user) — posts jobs, reviews matches, hires and tracks analytics.
+
+Platform Admin (Internal) — manages tenants, monitors system health, moderates content, support, billing.
+
+Guest / Visitor — prospective user who reads marketing pages, signs up.
+
+4. Complete site map (Information Architecture)
+
+(Public site + three dashboards + shared tenant features)
+
+PUBLIC: (Marketing + Auth)
+├─ Home
+├─ Features
+├─ Pricing
+├─ Resources (Blog, Case Studies)
+├─ About
+├─ Contact / Sales
+├─ Login
+└─ Signup
+
+AUTHENTICATED (Tenant-aware: tenant header with logo, quick nav)
+├─ Global Top Nav: Dashboard | Projects/Jobs | Candidates/Profile | Matches | Integrations | Billing | Analytics | Help | Account
+├─ Job-Seeker Dashboard (user.dashboard)
+│  ├─ Overview (profile completeness, quick stats, notifications)
+│  ├─ Profile (resume, skills, endorsements)
+│  ├─ Skill Assessment (tests / questionnaire)
+│  ├─ Learning Plan (recommended courses)
+│  ├─ Job Matches (recommended jobs, fit score, apply)
+│  ├─ Applications (applied jobs + statuses)
+│  ├─ Activity / Achievements (badges)
+│  └─ Settings (privacy, integrations, subscriptions)
+├─ Employer Dashboard (employer.dashboard)
+│  ├─ Overview (open roles, match stats, pipeline)
+│  ├─ Jobs (create job, job list, job details)
+│  ├─ Candidate Matches (per job, filters, shortlist)
+│  ├─ Shortlist & Interview Scheduler (calendar integrations)
+│  ├─ Team (invite teammates, roles)
+│  ├─ Billing & Plans
+│  ├─ Integrations (GitHub, Slack, ATS, SSO)
+│  └─ Analytics (time-to-hire, acceptance rates, skill demand)
+└─ Platform Admin Dashboard (platform.admin)
+   ├─ Overview (global metrics, revenue)
+   ├─ Tenants (list, create, billing status, actions)
+   ├─ Users (platform-level users, roles)
+   ├─ Moderation (reported content, candidate disputes)
+   ├─ System Health (service status, queue length, ML latency)
+   ├─ Billing & Finance (invoices, refunds)
+   ├─ Audit Logs
+   ├─ Feature Flags & Releases
+   └─ Settings (legal texts, 3rd party keys)
+
+
+Note: The UI will show tenant-specific header/options. Platform Admin is separate role with access to all tenants.
+
+5. Functional requirements (detailed)
+
+Each feature includes: description, acceptance criteria, UI notes, API considerations.
+
+5.1 Authentication & Account Management
+
+Description: Sign-up, sign-in, session management, password reset, OAuth, 2FA optional.
+
+Requirements
+
+Sign-up: Email/password + tenant creation for employer or personal account for job-seeker.
+
+OAuth: Google, GitHub, LinkedIn (job-seeker + employer).
+
+Sign-in: JWT access tokens (15m) + refresh tokens (7d).
+
+Password reset via secure email token.
+
+2FA (TOTP) optional for employer and admin accounts.
+
+Session revocation & refresh token blacklist.
+
+Acceptance criteria
+
+New user can create account and be assigned to a tenant (employer) or user profile.
+
+OAuth flows return tokens and map identity to existing account if email match.
+
+Password reset email contains secure one-time link that expires within 15 minutes.
+
+API notes
+
+POST /v1/auth/signup (body includes role: jobseeker|employer)
+
+POST /v1/auth/oauth-callback/:provider
+
+POST /v1/auth/2fa/enable
+
+5.2 Multi-Tenancy & RBAC
+
+Description: Tenant isolation and roles.
+
+Requirements
+
+Tenants represent organisations (employers); job-seekers may be global users with profiles.
+
+Roles per tenant: Owner, Admin, Recruiter, Viewer.
+
+Platform Admin role (global).
+
+Enforcement of tenant_id on all tenant-scoped resources.
+
+Acceptance criteria
+
+Tenants can only see their data.
+
+Role-based permissions enforced server-side.
+
+Owner can invite members and change roles.
+
+DB
+
+Add tenant_id FK to tenant-scoped tables. Row-level security recommended.
+
+5.3 Job / Project Management
+
+Description: Create, edit, publish job postings; parse job descriptions.
+
+Requirements
+
+CRUD jobs with fields: title, description, required skills, seniority, location (remote/onsite), salary range, tags, attachments.
+
+Draft & publish workflow.
+
+Job parser (ML): extracts skills, seniority, estimated effort, keywords, role category.
+
+Auto suggest salary bands and seniority based on description (AI).
+
+Job duplication, archive, reopen.
+
+Acceptance criteria
+
+Employer can create job, run parser, and see extracted skills.
+
+Jobs visible by employer users only until published.
+
+Job listing paginated and searchable.
+
+API
+
+POST /v1/projects
+
+POST /v1/projects/:id/parse → triggers ML job
+
+5.4 Candidate Management (Employer view)
+
+Description: Employers can ingest candidates from uploads or import.
+
+Requirements
+
+Add candidate record with resume upload, GitHub import, or email invite.
+
+Parse resume to extract skills, experience, education, links.
+
+Candidate profile score computed (skill match, repo signal).
+
+Mark candidate as private/public within tenant.
+
+Tags, notes, ratings, interview scheduling.
+
+Acceptance criteria
+
+Employer can upload resume and get parsed skill list within X seconds (background queue).
+
+Employer can filter candidates by skill, experience, fit score.
+
+API
+
+POST /v1/candidates (multipart/form)
+
+GET /v1/candidates?skill=react
+
+5.5 Profile & Resume (Job-Seeker view)
+
+Description: Job seekers manage profile & resume; skill passport.
+
+Requirements
+
+Upload resume, or auto-fill profile via OAuth import (LinkedIn).
+
+View and edit skills, experience, certifications.
+
+Skill Passport: evidence upload, endorsements, verified tests.
+
+Privacy toggles (searchable by employers?).
+
+Acceptance criteria
+
+User uploads resume; profile fields populated and editable.
+
+User toggles “public profile” state; only public users appear in marketplace.
+
+API
+
+POST /v1/users/:id/resume
+
+GET /v1/users/:id/profile?public=true
+
+5.6 Matching Engine & ML
+
+Description: Core matching flow using embeddings & business rules.
+
+Requirements
+
+ML Service generates embeddings for jobs & candidates.
+
+Vector DB stores embeddings with metadata.
+
+Matching pipeline: cosine similarity + business rules + scoring weights.
+
+Explainability: each match includes short explanation (why).
+
+Feedback loop (accept/reject) to update weights.
+
+Acceptance criteria
+
+Given project, system returns ranked candidate list with explanations.
+
+Feedback updates match quality (tracked metric).
+
+API
+
+POST /ml/embed (internal)
+
+GET /v1/projects/:id/matches
+
+5.7 Applications & Hiring Pipeline
+
+Description: Candidate application flows and pipeline stages.
+
+Requirements
+
+Candidates can apply to jobs via platform.
+
+Employer can move candidates through pipeline (Applied → Interview → Offer → Hired → Rejected).
+
+Auto notifications on stage changes.
+
+Store application events & notes.
+
+Acceptance criteria
+
+Candidate applies and employer sees new application.
+
+Notifications delivered via email/in-app/Slack (if integration).
+
+API
+
+POST /v1/applications
+
+PUT /v1/applications/:id/status
+
+5.8 Integrations
+
+Description: Slack, GitHub, ATS, Stripe, Calendars.
+
+Requirements
+
+Slack: notifications channels, summary digests.
+
+GitHub: import repos & activity signals for candidate scoring.
+
+ATS / Calendar (Google Calendar): interview scheduling.
+
+Stripe: subscriptions, invoices, metered billing.
+
+Acceptance criteria
+
+Tenant can connect Slack and receive messages for new matches.
+
+GitHub import pulls repo list for candidate after OAuth consent.
+
+5.9 Billing & Plans
+
+Description: Subscription management, trials, invoicing.
+
+Requirements
+
+Stripe Checkout + webhooks for payment events.
+
+Plans: Free, Starter, Growth, Pro, Enterprise (custom).
+
+Seat-based billing and metered charges (API calls, matches).
+
+Billing history, invoices list, upgrade/downgrade flow.
+
+Acceptance criteria
+
+Customer can start trial without CC (option), then convert to paid via Checkout.
+
+Webhooks update tenant plan status in DB.
+
+5.10 Analytics, Reports & Admin
+
+Description: Tenant & platform-level analytics.
+
+Requirements
+
+Tenant analytics: job performance, match rates, time-to-hire, candidate funnel.
+
+Platform admin: tenant counts, revenue, system health, audit logs.
+
+Export CSV for reports.
+
+Acceptance criteria
+
+Tenant admin can view charts and download CSVs.
+
+Platform admin can filter tenants and view KPIs.
+
+5.11 Notifications & Communication
+
+Requirements
+
+In-app notifications (unread count).
+
+Email notifications (transactional templates).
+
+Slack notifications (configurable cadence).
+
+Webhooks for tenant consumers.
+
+Acceptance criteria
+
+Notifications show in UI and can be marked read/unread.
+
+Email templates use tenant branding (logo).
+
+5.12 Security & Compliance
+
+Requirements
+
+TLS, CSRF protection for forms, secure cookie usage.
+
+RBAC enforcement server-side.
+
+RLS in Postgres optional for enterprise tenants.
+
+Data export/deletion APIs for GDPR.
+
+Logging and SSO support (SAML) for enterprise.
+
+Acceptance criteria
+
+Sensitive endpoints protected; audit logs recorded.
+
+Data deletion requests remove user data within SLA.
+
+5.13 Accessibility & UX
+
+Requirements
+
+WCAG 2.1 AA compliance.
+
+Keyboard accessible forms, ARIA labels.
+
+High contrast mode / font scaling.
+
+Mobile-first responsive design.
+
+Acceptance criteria
+
+Pages pass basic axe-core tests; manual a11y review completed.
+
+6. User stories (comprehensive)
+
+I break stories by actor and priority. Each entry includes acceptance criteria.
+
+6.1 Job-Seeker (High priority)
+
+US-JS-001 As a job-seeker, I want to sign up so I can create my profile.
+
+AC: Signup via email or OAuth, receive verification email, land on onboarding wizard.
+
+US-JS-002 As a job-seeker, I want to upload my resume so the platform can parse it.
+
+AC: Resume parsed within background job, fields pre-filled, user can edit.
+
+US-JS-003 As a job-seeker, I want an AI-generated career path based on my profile.
+
+AC: AI returns top 3 role suggestions, required skills gap, and learning plan.
+
+US-JS-004 As a job-seeker, I want to see job matches with fit scores so I know where to apply.
+
+AC: Matches page lists jobs with score, explanation, apply CTA.
+
+US-JS-005 As a job-seeker, I want to control my profile visibility (public/private).
+
+AC: Toggle visibility saved and respected in employer search.
+
+US-JS-006 As a job-seeker, I want to track applications and statuses.
+
+AC: Applications show history, employer notes (if shared), and timeline.
+
+US-JS-007 As a job-seeker, I want personalized learning recommendations (courses).
+
+AC: Suggestion cards with external links, track completion manually.
+
+6.2 Employer / Recruiter (High priority)
+
+US-EMP-001 As a recruiter, I want to create a job post so I can hire for a role.
+
+AC: Job created, status draft → publish; parsed skills visible.
+
+US-EMP-002 As a recruiter, I want to see AI-recommended candidates for my job.
+
+AC: Matches list returns top N candidates sorted by score and filterable.
+
+US-EMP-003 As a recruiter, I want to invite teammates with roles and permissions.
+
+AC: Invite email sent, role enforced in UI and API.
+
+US-EMP-004 As a recruiter, I want to shortlist and schedule interviews.
+
+AC: Add candidate to shortlist; schedule invites via Google Calendar.
+
+US-EMP-005 As a recruiter, I want analytics showing time-to-hire and match acceptance.
+
+AC: Charts show historical data and export options.
+
+US-EMP-006 As a recruiter, I want to connect Slack so my team receives match notifications.
+
+AC: Slack OAuth connects; messages posted in channel on new matches.
+
+US-EMP-007 As a recruiter, I want to import candidates from GitHub (for dev roles).
+
+AC: OAuth to GitHub, candidate repos examined and skills extracted.
+
+6.3 Platform Admin (Critical)
+
+US-PLAT-001 As a platform admin, I want to view global KPIs and revenue.
+
+AC: Dashboard with MRR, active tenants, churn.
+
+US-PLAT-002 As a platform admin, I want to manage tenants (suspend/refund).
+
+AC: Tenant actions available; logs recorded.
+
+US-PLAT-003 As a platform admin, I want to monitor ML latency and queue backlogs.
+
+AC: Alerts sent if thresholds exceeded.
+
+US-PLAT-004 As a platform admin, I want to moderate reported content and handle disputes.
+
+AC: Moderation queue with action history.
+
+6.4 Cross-cutting stories (Security, Integration)
+
+US-SEC-001 As a security engineer, I want audit logs for user actions.
+
+AC: Critical actions logged with actor, timestamp, and IP.
+
+US-INT-001 As an integration owner, I want webhooks for application events.
+
+AC: Webhook configured, retries on failure.
+
+7. Acceptance criteria & definition of done (DoD)
+
+For each feature release:
+
+All API endpoints implemented with OpenAPI spec.
+
+Unit tests with ≥ 80% coverage for new code.
+
+Integration/E2E tests for critical flows (signup, create job, match generation).
+
+Security review: SCA and dependency scan passed.
+
+Performance: P95 latency under 300ms for API endpoints under test load.
+
+Accessibility: key pages pass automated a11y checks and manual spot checks.
+
+8. Data model summary (developer quick reference)
+
+Essential tables (already provided earlier): tenants, users, projects, candidates, matches, skill_passports, integrations, activity_logs, refresh_tokens.
+
+Key fields:
+
+projects.required_skills (jsonb array)
+
+candidates.raw_skills (jsonb)
+
+projects.embedding_id and candidates.embedding_id (string pointer to vector DB)
+
+matches.score numeric and matches.explanation text
+
+Indexes: tenant-based indexes and partial indexes on status. RLS recommended.
+
+9. API contract (selected critical endpoints — full OpenAPI recommended)
+
+Provide a minimal contract here for priority endpoints (examples — production should use OpenAPI file):
+
+POST /v1/auth/signup
+
+Request: { email, password, name, role }
+
+Response: { accessToken, refreshToken, user }
+
+POST /v1/projects
+
+Request: { title, description, required_skills, seniority, budget } + auth header
+
+Response: project object { id, parse_status: 'pending', embedding_id?: null }
+
+GET /v1/projects/:id/matches
+
+Response: [{candidate_id, score, explanation, candidate_snapshot}]
+
+POST /v1/candidates (multipart)
+
+Accept resume file -> returns candidate_id and parse_job_id for async parsing.
+
+POST /v1/webhooks/stripe
+
+Handle invoice.paid, invoice.payment_failed, customer.subscription.deleted.
+
+10. UX & UI guidelines (usability standards)
+
+Keep the “3-click” rule to reach primary actions.
+
+Progressive disclosure: show simple summaries and allow deeper view for details.
+
+Use onboarding modal with progress indicators and highlight required fields.
+
+Use consistent CTAs: primary (solid) for main actions; secondary (outline) for auxiliary actions.
+
+Provide empty-state suggestions (e.g., when no matches show how to improve profile).
+
+Accessibility: font sizes, color contrast, semantic HTML.
+
+11. Testing & QA plan
+
+Unit testing: Jest (backend), Vitest (frontend).
+
+Integration: Supertest / Playwright for API + UI end-to-end.
+
+Load testing: k6 or Locust to simulate matching pipeline under load.
+
+ML tests: Regression tests on embeddings (sanity checks) and blind test sample sets.
+
+Security scans: Snyk / Dependabot / pip-audit.
+
+12. Monitoring & alerts (SRE)
+
+Application metrics: p95 latency, error rate, request rate.
+
+Business metrics: new signups, paid conversions, match acceptance rate.
+
+Worker metrics: job queue length, ML latency, vector DB errors.
+
+Alerts: high error rate (>1%), ML latency > 2s for parse, queue length > threshold.
+
+13. Roadmap & milestones (12 months, high-level)
+
+M0 (Prep): Repo + infra + skeleton services, auth, DB models.
+
+M1 (MVP Q1): Signup, resume upload/parse, project create/parse, basic matching, tenant onboarding, Stripe billing.
+
+M2 (Growth Q2): Slack/GitHub integrations, analytics, feedback loop, improve matching models.
+
+M3 (Scale Q3): Enterprise features, SSO/SAML, per-tenant branding, heavy multi-region infra.
+
+M4 (Optimization Q4): Marketplace, API monetization, mobile app.
+
+14. Security checklist (developer must-haves)
+
+Input validation & sanitization for uploads.
+
+Use parameterized queries and ORM protections.
+
+Hash refresh tokens in DB.
+
+Use HSTS, CSP, secure cookies.
+
+Rate-limit auth endpoints.
+
+Periodic pentest schedule.
+
+15. Developer handoff package (what you must deliver to dev team)
+
+OpenAPI v3 spec (complete)
+
+DB migration SQL (initial + incremental)
+
+Repo scaffold: services/api (NestJS), services/ml (FastAPI), worker, web (React).
+
+Example env files & secrets guide
+
+Deployment Terraform examples and GitHub Actions workflow
+
+Seed data and Postman collection for manual testing
+
+Acceptance test checklist
+
+16. Edge cases & considerations
+
+Duplicate candidates across tenants (public profiles) — ensure dedup via hashed email/GitHub id.
+
+Resume parsing failures: provide manual edit UI.
+
+Cross-tenant data leakage: mandatory RLS or separate DB for enterprise.
+
+Rate-limited third-party APIs (LinkedIn, OpenAI): implement backoff and caching.
+
+Handling GDPR deletion: cascade delete vs anonymization (configurable per tenant).
+
+17. Communications & support
+
+Integrated help center with context-sensitive tips.
+
+In-app chat for enterprise users (support plan).
+
+Auto emails for billing & match notifications (templating per tenant).
+
+18. Example acceptance test scenarios (basic)
+
+Scenario A — Job creation & match generation
+
+Employer creates job via UI.
+
+System enqueues parse job.
+
+ML service parses description and returns skills + embedding.
+
+Worker upserts embedding and executes match query.
+
+Matches appear in employer UI with explanations.
+
+Employer provides feedback; feedback stored.
+
+Scenario B — Job-seeker application
+
+Job-seeker uploads resume.
+
+Profile populated and set to public.
+
+Employer match finds candidate; employer invites candidate.
+
+Candidate gets email and marks interest.
