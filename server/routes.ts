@@ -97,17 +97,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/job-seeker/profile', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
+      const validatedData = insertJobSeekerSchema.partial().parse(req.body);
       const existing = await storage.getJobSeeker(userId);
       
       if (existing) {
-        const updated = await storage.updateJobSeeker(existing.id, req.body);
+        const updated = await storage.updateJobSeeker(existing.id, validatedData);
         res.json(updated);
       } else {
-        const created = await storage.createJobSeeker({ ...req.body, userId });
+        const created = await storage.createJobSeeker({ ...validatedData, userId });
         res.json(created);
       }
     } catch (error) {
       console.error("Error updating profile:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid profile data", errors: error });
+      }
       res.status(500).json({ message: "Failed to update profile" });
     }
   });
@@ -115,6 +119,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/job-seeker/extract-skills', isAuthenticated, async (req: any, res) => {
     try {
       const { resumeText } = req.body;
+      if (!resumeText || typeof resumeText !== 'string') {
+        return res.status(400).json({ message: "Resume text is required" });
+      }
       const skills = await aiService.extractResumeSkills(resumeText);
       res.json({ skills });
     } catch (error) {
@@ -135,17 +142,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/employer/profile', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
+      const validatedData = insertEmployerSchema.partial().parse(req.body);
       const existing = await storage.getEmployer(userId);
       
       if (existing) {
-        const updated = await storage.updateEmployer(existing.id, req.body);
+        const updated = await storage.updateEmployer(existing.id, validatedData);
         res.json(updated);
       } else {
-        const created = await storage.createEmployer({ ...req.body, userId });
+        const created = await storage.createEmployer({ ...validatedData, userId });
         res.json(created);
       }
     } catch (error) {
       console.error("Error updating employer profile:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid profile data", errors: error });
+      }
       res.status(500).json({ message: "Failed to update profile" });
     }
   });
@@ -196,22 +207,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Employer profile not found" });
       }
 
-      const job = await storage.createJob({
+      const validatedData = insertJobSchema.parse({
         ...req.body,
         employerId: employer.id,
       });
+      
+      const job = await storage.createJob(validatedData);
       res.json(job);
     } catch (error) {
       console.error("Error creating job:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid job data", errors: error });
+      }
       res.status(500).json({ message: "Failed to create job" });
     }
   });
 
   app.patch('/api/employer/jobs/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const updated = await storage.updateJob(req.params.id, req.body);
+      const validatedData = insertJobSchema.partial().parse(req.body);
+      const updated = await storage.updateJob(req.params.id, validatedData);
       res.json(updated);
     } catch (error) {
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid job data", errors: error });
+      }
       res.status(500).json({ message: "Failed to update job" });
     }
   });
@@ -225,7 +245,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Job seeker profile not found" });
       }
 
-      const application = await storage.createApplication({
+      const validatedData = insertApplicationSchema.parse({
         jobId: req.params.jobId,
         jobSeekerId: jobSeeker.id,
         coverLetter: req.body.coverLetter,
@@ -236,9 +256,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }],
       });
 
+      const application = await storage.createApplication(validatedData);
       res.json(application);
     } catch (error) {
       console.error("Error creating application:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid application data", errors: error });
+      }
       res.status(500).json({ message: "Failed to submit application" });
     }
   });
@@ -281,9 +305,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/applications/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const updated = await storage.updateApplication(req.params.id, req.body);
+      const validatedData = insertApplicationSchema.partial().parse(req.body);
+      const updated = await storage.updateApplication(req.params.id, validatedData);
       res.json(updated);
     } catch (error) {
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid application data", errors: error });
+      }
       res.status(500).json({ message: "Failed to update application" });
     }
   });
@@ -342,9 +370,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/matches/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const updated = await storage.updateMatch(req.params.id, req.body);
+      const validatedData = insertMatchSchema.partial().parse(req.body);
+      const updated = await storage.updateMatch(req.params.id, validatedData);
       res.json(updated);
     } catch (error) {
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid match data", errors: error });
+      }
       res.status(500).json({ message: "Failed to update match" });
     }
   });
@@ -359,6 +391,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { targetRole } = req.body;
+      if (!targetRole || typeof targetRole !== 'string') {
+        return res.status(400).json({ message: "Target role is required" });
+      }
+      
       const analysis = await aiService.analyzeSkillGaps(
         jobSeeker.skills || [],
         targetRole
@@ -381,6 +417,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { targetRole, targetSkills } = req.body;
+      if (!targetRole || typeof targetRole !== 'string') {
+        return res.status(400).json({ message: "Target role is required" });
+      }
+      if (!Array.isArray(targetSkills) || targetSkills.length === 0) {
+        return res.status(400).json({ message: "Target skills array is required" });
+      }
+      
       const roadmap = await aiService.generateLearningPlan(
         jobSeeker.skills || [],
         targetSkills,
@@ -432,9 +475,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/job-seeker/learning-plan/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const updated = await storage.updateLearningPlan(req.params.id, req.body);
+      const validatedData = insertLearningPlanSchema.partial().parse(req.body);
+      const updated = await storage.updateLearningPlan(req.params.id, validatedData);
       res.json(updated);
     } catch (error) {
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid learning plan data", errors: error });
+      }
       res.status(500).json({ message: "Failed to update learning plan" });
     }
   });
