@@ -1,6 +1,5 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { setupVite, serveStatic, log } from "./vite";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 
@@ -83,13 +82,5 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  const httpServer = createServer(app);
-
-  if (app.get("env") === "development") {
-    await setupVite(app, httpServer);
-  } else {
-    serveStatic(app);
-  }
-
-  return httpServer;
+  return createServer(app);
 }
