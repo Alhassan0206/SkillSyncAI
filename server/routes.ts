@@ -490,5 +490,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/admin/stats', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const tenants = await storage.getTenants();
+      const users = await storage.getAllUsers();
+      const jobs = await storage.getJobs();
+      const applications = await storage.getAllApplications();
+
+      res.json({
+        totalTenants: tenants.length,
+        activeTenants: tenants.filter(t => t.status === 'active').length,
+        totalUsers: users.length,
+        activeUsers: users.filter(u => u.role === 'job_seeker' || u.role === 'employer').length,
+        totalJobs: jobs.length,
+        totalApplications: applications.length,
+      });
+    } catch (error) {
+      console.error("Error fetching admin stats:", error);
+      res.status(500).json({ message: "Failed to fetch stats" });
+    }
+  });
+
+  app.get('/api/admin/tenants', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const tenants = await storage.getTenants();
+      res.json(tenants);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch tenants" });
+    }
+  });
+
+  app.get('/api/admin/users', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const users = await storage.getAllUsers();
+      res.json(users);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
   return createServer(app);
 }

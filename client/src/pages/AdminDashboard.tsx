@@ -1,33 +1,65 @@
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AdminSidebar from "@/components/AdminSidebar";
 import DashboardHeader from "@/components/DashboardHeader";
 import StatsCard from "@/components/StatsCard";
-import { Building2, Users, DollarSign, Activity } from "lucide-react";
+import { Building2, Users, DollarSign, Activity, Briefcase } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export default function AdminDashboard() {
-  // todo: remove mock functionality
-  const mockStats = [
-    { title: "Total Tenants", value: "248", change: "+12 this month", changeType: "positive" as const, icon: Building2 },
-    { title: "Active Users", value: "12.5K", change: "+1.2K", changeType: "positive" as const, icon: Users },
-    { title: "MRR", value: "$124K", change: "+8.5%", changeType: "positive" as const, icon: DollarSign },
-    { title: "System Health", value: "99.8%", change: "All systems operational", changeType: "positive" as const, icon: Activity },
+  const { user } = useAuth() as any;
+
+  const { data: stats } = useQuery<any>({
+    queryKey: ['/api/admin/stats'],
+  });
+
+  const { data: tenants } = useQuery<any[]>({
+    queryKey: ['/api/admin/tenants'],
+  });
+
+  const { data: users } = useQuery<any[]>({
+    queryKey: ['/api/admin/users'],
+  });
+
+  const statsCards = [
+    { 
+      title: "Total Tenants", 
+      value: stats?.totalTenants?.toString() || "0", 
+      change: `${stats?.activeTenants || 0} active`, 
+      changeType: "positive" as const, 
+      icon: Building2 
+    },
+    { 
+      title: "Active Users", 
+      value: stats?.activeUsers?.toString() || "0", 
+      change: `${stats?.totalUsers || 0} total`, 
+      changeType: "neutral" as const, 
+      icon: Users 
+    },
+    { 
+      title: "Job Postings", 
+      value: stats?.totalJobs?.toString() || "0", 
+      change: "Active listings", 
+      changeType: "neutral" as const, 
+      icon: Briefcase 
+    },
+    { 
+      title: "Applications", 
+      value: stats?.totalApplications?.toString() || "0", 
+      change: "Total submitted", 
+      changeType: "positive" as const, 
+      icon: Activity 
+    },
   ];
 
-  const mockTenants = [
-    { id: "1", name: "TechCorp Inc", plan: "Growth", mrr: "$299", users: 45, status: "active" },
-    { id: "2", name: "InnovateLabs", plan: "Enterprise", mrr: "$999", users: 120, status: "active" },
-    { id: "3", name: "StartupHub", plan: "Starter", mrr: "$99", users: 12, status: "trial" },
-    { id: "4", name: "GlobalHire", plan: "Growth", mrr: "$299", users: 38, status: "active" },
-  ];
-
-  const mockSystemMetrics = [
-    { label: "API Response Time", value: "145ms", status: "healthy" },
-    { label: "Match Processing", value: "2.3s", status: "healthy" },
-    { label: "Database Load", value: "45%", status: "healthy" },
-    { label: "Queue Depth", value: "12", status: "healthy" },
+  const systemMetrics = [
+    { label: "API Response Time", value: "< 200ms", status: "healthy" },
+    { label: "Database Status", value: "Operational", status: "healthy" },
+    { label: "Total Tenants", value: stats?.totalTenants?.toString() || "0", status: "healthy" },
+    { label: "Total Jobs", value: stats?.totalJobs?.toString() || "0", status: "healthy" },
   ];
 
   const style = {
@@ -52,7 +84,11 @@ export default function AdminDashboard() {
       <div className="flex h-screen w-full">
         <AdminSidebar />
         <div className="flex flex-col flex-1">
-          <DashboardHeader userName="Admin User" userRole="Platform Administrator" notificationCount={2} />
+          <DashboardHeader 
+            userName={`${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || "Admin"} 
+            userRole="Platform Administrator" 
+            notificationCount={0} 
+          />
           
           <main className="flex-1 overflow-auto p-6">
             <div className="max-w-screen-2xl mx-auto space-y-6">
@@ -62,7 +98,7 @@ export default function AdminDashboard() {
               </div>
 
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {mockStats.map((stat, index) => (
+                {statsCards.map((stat, index) => (
                   <StatsCard key={index} {...stat} />
                 ))}
               </div>
@@ -78,23 +114,28 @@ export default function AdminDashboard() {
                     </div>
                     
                     <div className="space-y-3">
-                      {mockTenants.map((tenant) => (
-                        <div key={tenant.id} className="flex items-center justify-between p-4 border rounded-md hover-elevate">
-                          <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
-                              <Building2 className="w-5 h-5 text-primary" />
+                      {tenants && tenants.length > 0 ? (
+                        tenants.slice(0, 4).map((tenant) => (
+                          <div key={tenant.id} className="flex items-center justify-between p-4 border rounded-md hover-elevate">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
+                                <Building2 className="w-5 h-5 text-primary" />
+                              </div>
+                              <div>
+                                <h4 className="font-medium">{tenant.name}</h4>
+                                <p className="text-sm text-muted-foreground">{tenant.plan}</p>
+                              </div>
                             </div>
-                            <div>
-                              <h4 className="font-medium">{tenant.name}</h4>
-                              <p className="text-sm text-muted-foreground">{tenant.plan} • {tenant.users} users</p>
+                            <div className="flex items-center gap-4">
+                              {getStatusBadge(tenant.status)}
                             </div>
                           </div>
-                          <div className="flex items-center gap-4">
-                            <span className="font-semibold">{tenant.mrr}</span>
-                            {getStatusBadge(tenant.status)}
-                          </div>
+                        ))
+                      ) : (
+                        <div className="py-8 text-center text-muted-foreground">
+                          <p className="text-sm">No tenants yet</p>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </Card>
                 </div>
@@ -103,7 +144,7 @@ export default function AdminDashboard() {
                   <Card className="p-6">
                     <h3 className="text-lg font-semibold mb-4">System Metrics</h3>
                     <div className="space-y-4">
-                      {mockSystemMetrics.map((metric, index) => (
+                      {systemMetrics.map((metric, index) => (
                         <div key={index} className="flex items-center justify-between">
                           <span className="text-sm text-muted-foreground">{metric.label}</span>
                           <div className="flex items-center gap-2">
