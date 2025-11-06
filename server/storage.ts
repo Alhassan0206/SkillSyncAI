@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 export interface IStorage {
   getUser(id: string): Promise<schema.User | undefined>;
   getUserByEmail(email: string): Promise<schema.User | undefined>;
+  getAllUsers(): Promise<schema.User[]>;
   createUser(user: schema.InsertUser): Promise<schema.User>;
   upsertUser(user: schema.UpsertUser): Promise<schema.User>;
   
@@ -24,6 +25,7 @@ export interface IStorage {
   updateJob(id: string, data: Partial<schema.InsertJob>): Promise<schema.Job>;
   
   getApplications(jobSeekerId?: string, jobId?: string): Promise<schema.Application[]>;
+  getAllApplications(): Promise<schema.Application[]>;
   createApplication(application: schema.InsertApplication): Promise<schema.Application>;
   updateApplication(id: string, data: Partial<schema.InsertApplication>): Promise<schema.Application>;
   
@@ -36,6 +38,7 @@ export interface IStorage {
   updateLearningPlan(id: string, data: Partial<schema.InsertLearningPlan>): Promise<schema.LearningPlan>;
   
   getTenant(id: string): Promise<schema.Tenant | undefined>;
+  getTenants(): Promise<schema.Tenant[]>;
   createTenant(tenant: schema.InsertTenant): Promise<schema.Tenant>;
   updateTenant(id: string, data: Partial<schema.InsertTenant>): Promise<schema.Tenant>;
 }
@@ -49,6 +52,10 @@ export class DbStorage implements IStorage {
   async getUserByEmail(email: string): Promise<schema.User | undefined> {
     const [user] = await db.select().from(schema.users).where(eq(schema.users.email, email));
     return user;
+  }
+
+  async getAllUsers(): Promise<schema.User[]> {
+    return db.select().from(schema.users);
   }
 
   async createUser(insertUser: schema.InsertUser): Promise<schema.User> {
@@ -155,6 +162,10 @@ export class DbStorage implements IStorage {
     return query;
   }
 
+  async getAllApplications(): Promise<schema.Application[]> {
+    return db.select().from(schema.applications);
+  }
+
   async createApplication(insertApplication: schema.InsertApplication): Promise<schema.Application> {
     const [application] = await db.insert(schema.applications).values(insertApplication as any).returning();
     return application;
@@ -215,6 +226,10 @@ export class DbStorage implements IStorage {
   async getTenant(id: string): Promise<schema.Tenant | undefined> {
     const [tenant] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, id));
     return tenant;
+  }
+
+  async getTenants(): Promise<schema.Tenant[]> {
+    return db.select().from(schema.tenants);
   }
 
   async createTenant(insertTenant: schema.InsertTenant): Promise<schema.Tenant> {
