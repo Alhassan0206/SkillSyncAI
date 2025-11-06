@@ -41,6 +41,12 @@ export interface IStorage {
   getTenants(): Promise<schema.Tenant[]>;
   createTenant(tenant: schema.InsertTenant): Promise<schema.Tenant>;
   updateTenant(id: string, data: Partial<schema.InsertTenant>): Promise<schema.Tenant>;
+  
+  getTeamInvitations(tenantId: string): Promise<schema.TeamInvitation[]>;
+  getTeamInvitationByToken(token: string): Promise<schema.TeamInvitation | undefined>;
+  createTeamInvitation(invitation: schema.InsertTeamInvitation): Promise<schema.TeamInvitation>;
+  updateTeamInvitation(id: string, data: Partial<schema.InsertTeamInvitation>): Promise<schema.TeamInvitation>;
+  getTeamMembers(tenantId: string): Promise<schema.User[]>;
 }
 
 export class DbStorage implements IStorage {
@@ -243,6 +249,32 @@ export class DbStorage implements IStorage {
       .where(eq(schema.tenants.id, id))
       .returning();
     return tenant;
+  }
+
+  async getTeamInvitations(tenantId: string): Promise<schema.TeamInvitation[]> {
+    return db.select().from(schema.teamInvitations).where(eq(schema.teamInvitations.tenantId, tenantId));
+  }
+
+  async getTeamInvitationByToken(token: string): Promise<schema.TeamInvitation | undefined> {
+    const [invitation] = await db.select().from(schema.teamInvitations).where(eq(schema.teamInvitations.token, token));
+    return invitation;
+  }
+
+  async createTeamInvitation(insertInvitation: schema.InsertTeamInvitation): Promise<schema.TeamInvitation> {
+    const [invitation] = await db.insert(schema.teamInvitations).values(insertInvitation).returning();
+    return invitation;
+  }
+
+  async updateTeamInvitation(id: string, data: Partial<schema.InsertTeamInvitation>): Promise<schema.TeamInvitation> {
+    const [invitation] = await db.update(schema.teamInvitations)
+      .set(data)
+      .where(eq(schema.teamInvitations.id, id))
+      .returning();
+    return invitation;
+  }
+
+  async getTeamMembers(tenantId: string): Promise<schema.User[]> {
+    return db.select().from(schema.users).where(eq(schema.users.tenantId, tenantId));
   }
 }
 

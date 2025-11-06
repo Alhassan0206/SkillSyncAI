@@ -3,8 +3,9 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { aiService } from "./aiService";
-import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema, insertMatchSchema, insertLearningPlanSchema } from "@shared/schema";
+import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema, insertMatchSchema, insertLearningPlanSchema, insertTeamInvitationSchema } from "@shared/schema";
 import Stripe from "stripe";
+import { randomBytes } from "crypto";
 
 const stripe = process.env.STRIPE_SECRET_KEY 
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2025-10-29.clover" })
@@ -763,6 +764,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     res.json({ received: true });
+  });
+
+  app.get('/api/employer/team/members', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.tenantId) {
+        return res.status(404).json({ message: "No team found" });
+      }
+
+      const members = await storage.getTeamMembers(user.tenantId);
+      res.json(members);
+    } catch (error) {
+      console.error("Error fetching team members:", error);
+      res.status(500).json({ message: "Failed to fetch team members" });
+    }
+  });
+
+  app.get('/api/employer/team/invitations', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.tenantId) {
+        return res.status(404).json({ message: "No team found" });
+      }
+
+      const invitations = await storage.getTeamInvitations(user.tenantId);
+      res.json(invitations);
+    } catch (error) {
+      console.error("Error fetching invitations:", error);
+      res.status(500).json({ message: "Failed to fetch invitations" });
+    }
+  });
+
+  app.post('/api/employer/team/invite', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(403).json({ message: "Only employers can invite team members" });
+      }
+
+      let tenantId = user?.tenantId;
+      
+      if (!tenantId) {
+        const tenant = await storage.createTenant({
+          name: employer.companyName,
+          plan: 'free',
+          status: 'active',
+        });
+        tenantId = tenant.id;
+        await storage.upsertUser({
+          ...user!,
+          tenantId: tenant.id,
+        });
+      }
+
+      const data = insertTeamInvitationSchema.extend({
+        email: insertTeamInvitationSchema.shape.email.email(),
+      }).parse({
+        ...req.body,
+        tenantId,
+        invitedBy: userId,
+        token: randomBytes(32).toString('hex'),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      });
+
+      const invitation = await storage.createTeamInvitation(data);
+      res.json(invitation);
+    } catch (error: any) {
+      console.error("Error creating invitation:", error);
+      res.status(400).json({ message: error.message || "Failed to create invitation" });
+    }
+  });
+
+  app.delete('/api/employer/team/invitation/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const invitationId = req.params.id;
+      
+      if (!user?.tenantId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const invitations = await storage.getTeamInvitations(user.tenantId);
+      const invitation = invitations.find(inv => inv.id === invitationId);
+      
+      if (!invitation) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
+
+      await storage.updateTeamInvitation(invitationId, { status: 'revoked' });
+      res.json({ message: "Invitation revoked" });
+    } catch (error) {
+      console.error("Error revoking invitation:", error);
+      res.status(500).json({ message: "Failed to revoke invitation" });
+    }
   });
 
   return createServer(app);
