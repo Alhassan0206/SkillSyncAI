@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { aiService } from "./aiService";
-import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema } from "@shared/schema";
+import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema, insertMatchSchema, insertLearningPlanSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
@@ -149,7 +149,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const updated = await storage.updateEmployer(existing.id, validatedData);
         res.json(updated);
       } else {
-        const created = await storage.createEmployer({ ...validatedData, userId });
+        const created = await storage.createEmployer({ 
+          ...validatedData, 
+          userId,
+          companyName: validatedData.companyName || 'My Company',
+        });
         res.json(created);
       }
     } catch (error) {
