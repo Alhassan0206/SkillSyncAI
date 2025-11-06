@@ -4,6 +4,11 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { aiService } from "./aiService";
 import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema, insertMatchSchema, insertLearningPlanSchema } from "@shared/schema";
+import Stripe from "stripe";
+
+const stripe = process.env.STRIPE_SECRET_KEY 
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2025-10-29.clover" })
+  : null;
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
@@ -548,6 +553,216 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch users" });
     }
+  });
+
+  app.get('/api/employer/billing/status', isAuthenticated, async (req: any, res) => {
+    try {
+      if (!stripe) {
+        return res.json({
+          configured: false,
+          message: "Stripe is not configured. Please contact administrator."
+        });
+      }
+
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const tenant = user?.tenantId ? await storage.getTenant(user.tenantId) : null;
+
+      if (tenant?.stripeSubscriptionId) {
+        try {
+          const subscription = await stripe.subscriptions.retrieve(tenant.stripeSubscriptionId);
+          return res.json({
+            configured: true,
+            hasSubscription: true,
+            subscription: {
+              id: subscription.id,
+              status: subscription.status,
+              currentPeriodEnd: subscription.current_period_end || 0,
+              plan: subscription.items.data[0]?.price.nickname || tenant.plan,
+            }
+          });
+        } catch (error) {
+          console.error("Error retrieving subscription:", error);
+        }
+      }
+
+      res.json({
+        configured: true,
+        hasSubscription: false,
+        plan: tenant?.plan || 'free',
+      });
+    } catch (error) {
+      console.error("Error fetching billing status:", error);
+      res.status(500).json({ message: "Failed to fetch billing status" });
+    }
+  });
+
+  app.post('/api/employer/billing/create-checkout', isAuthenticated, async (req: any, res) => {
+    try {
+      if (!stripe) {
+        return res.status(503).json({ message: "Stripe is not configured" });
+      }
+
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      let tenant = user?.tenantId ? await storage.getTenant(user.tenantId) : null;
+      
+      if (!tenant) {
+        tenant = await storage.createTenant({
+          name: employer.companyName,
+          plan: 'free',
+          status: 'active',
+        });
+        await storage.upsertUser({
+          ...user!,
+          tenantId: tenant.id,
+        });
+      }
+
+      let customerId = tenant.stripeCustomerId;
+      
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: user?.email || undefined,
+          name: employer.companyName,
+          metadata: {
+            tenantId: tenant.id,
+          },
+        });
+        customerId = customer.id;
+        await storage.updateTenant(tenant.id, {
+          stripeCustomerId: customer.id,
+        });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: 'SkillSync AI Pro Plan',
+                description: 'Unlimited job postings and AI-powered candidate matching',
+              },
+              recurring: {
+                interval: 'month',
+              },
+              unit_amount: 9900,
+            },
+            quantity: 1,
+          },
+        ],
+        mode: 'subscription',
+        success_url: `${req.headers.origin}/employer/billing?success=true`,
+        cancel_url: `${req.headers.origin}/employer/billing?canceled=true`,
+        subscription_data: {
+          metadata: {
+            tenantId: tenant.id,
+          },
+        },
+        metadata: {
+          tenantId: tenant.id,
+        },
+      });
+
+      res.json({ url: session.url });
+    } catch (error) {
+      console.error("Error creating checkout session:", error);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
+  app.post('/api/employer/billing/create-portal', isAuthenticated, async (req: any, res) => {
+    try {
+      if (!stripe) {
+        return res.status(503).json({ message: "Stripe is not configured" });
+      }
+
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      const tenant = user?.tenantId ? await storage.getTenant(user.tenantId) : null;
+      
+      if (!tenant?.stripeCustomerId) {
+        return res.status(400).json({ message: "No billing account found" });
+      }
+
+      const session = await stripe.billingPortal.sessions.create({
+        customer: tenant.stripeCustomerId,
+        return_url: `${req.headers.origin}/employer/billing`,
+      });
+
+      res.json({ url: session.url });
+    } catch (error) {
+      console.error("Error creating portal session:", error);
+      res.status(500).json({ message: "Failed to create portal session" });
+    }
+  });
+
+  app.post('/api/stripe-webhook', async (req: any, res) => {
+    if (!stripe) {
+      return res.status(503).send('Stripe not configured');
+    }
+
+    const sig = req.headers['stripe-signature'];
+    let event;
+
+    try {
+      const rawBody = req.rawBody || req.body;
+      event = stripe.webhooks.constructEvent(
+        rawBody,
+        sig as string,
+        process.env.STRIPE_WEBHOOK_SECRET || ''
+      );
+    } catch (err: any) {
+      console.error('Webhook signature verification failed:', err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    switch (event.type) {
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated': {
+        const subscription = event.data.object as Stripe.Subscription;
+        const tenantId = subscription.metadata.tenantId;
+        
+        if (tenantId) {
+          await storage.updateTenant(tenantId, {
+            stripeSubscriptionId: subscription.id,
+            plan: subscription.status === 'active' ? 'pro' : 'free',
+            status: subscription.status === 'active' ? 'active' : 'inactive',
+          });
+        }
+        break;
+      }
+      case 'customer.subscription.deleted': {
+        const subscription = event.data.object as Stripe.Subscription;
+        const tenantId = subscription.metadata.tenantId;
+        
+        if (tenantId) {
+          await storage.updateTenant(tenantId, {
+            stripeSubscriptionId: null,
+            plan: 'free',
+          });
+        }
+        break;
+      }
+    }
+
+    res.json({ received: true });
   });
 
   return createServer(app);
