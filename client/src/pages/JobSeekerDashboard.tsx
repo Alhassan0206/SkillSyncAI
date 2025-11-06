@@ -17,6 +17,7 @@ export default function JobSeekerDashboard() {
       <div className="flex h-screen w-full">
         <JobSeekerSidebar />
         <Switch>
+          <Route path="/" component={JobSeekerOverview} />
           <Route path="/dashboard" component={JobSeekerOverview} />
           <Route path="/dashboard/profile" component={JobSeekerProfile} />
           <Route path="/dashboard/matches" component={JobSeekerMatches} />
