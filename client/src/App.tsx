@@ -46,7 +46,7 @@ function Router() {
     return (
       <Switch>
         <Route path="/" component={AdminDashboard} />
-        <Route path="/admin" component={AdminDashboard} />
+        <Route path="/admin/:rest*" component={AdminDashboard} />
         <Route component={NotFound} />
       </Switch>
     );
@@ -56,7 +56,7 @@ function Router() {
     return (
       <Switch>
         <Route path="/" component={EmployerDashboard} />
-        <Route path="/employer" component={EmployerDashboard} />
+        <Route path="/employer/:rest*" component={EmployerDashboard} />
         <Route component={NotFound} />
       </Switch>
     );
@@ -65,7 +65,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={JobSeekerDashboard} />
-      <Route path="/dashboard" component={JobSeekerDashboard} />
+      <Route path="/dashboard/:rest*" component={JobSeekerDashboard} />
       <Route component={NotFound} />
     </Switch>
   );
