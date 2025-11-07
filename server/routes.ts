@@ -578,13 +578,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (tenant?.stripeSubscriptionId) {
         try {
           const subscription = await stripe.subscriptions.retrieve(tenant.stripeSubscriptionId);
+          const currentPeriodEnd = (subscription as any).current_period_end || 0;
           return res.json({
             configured: true,
             hasSubscription: true,
             subscription: {
               id: subscription.id,
               status: subscription.status,
-              currentPeriodEnd: subscription.current_period_end || 0,
+              currentPeriodEnd: typeof currentPeriodEnd === 'number' ? currentPeriodEnd : Number(currentPeriodEnd),
               plan: subscription.items.data[0]?.price.nickname || tenant.plan,
             }
           });

@@ -6,6 +6,7 @@ import JobSeekerProfile from "./JobSeeker/Profile";
 import JobSeekerMatches from "./JobSeeker/Matches";
 import JobSeekerApplications from "./JobSeeker/Applications";
 import JobSeekerLearning from "./JobSeeker/Learning";
+import JobSeekerSettings from "./JobSeeker/Settings";
 
 export default function JobSeekerDashboard() {
   const style = {
@@ -23,6 +24,7 @@ export default function JobSeekerDashboard() {
           <Route path="/dashboard/matches" component={JobSeekerMatches} />
           <Route path="/dashboard/applications" component={JobSeekerApplications} />
           <Route path="/dashboard/learning" component={JobSeekerLearning} />
+          <Route path="/dashboard/settings" component={JobSeekerSettings} />
           <Route component={JobSeekerOverview} />
         </Switch>
       </div>

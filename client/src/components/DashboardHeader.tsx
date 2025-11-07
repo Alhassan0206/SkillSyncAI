@@ -14,12 +14,36 @@ import ThemeToggle from "./ThemeToggle";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
 interface DashboardHeaderProps {
-  userName: string;
-  userRole: string;
+  userName?: string;
+  userRole?: string;
   notificationCount?: number;
+  title?: string;
+  subtitle?: string;
+  action?: React.ReactNode;
 }
 
-export default function DashboardHeader({ userName, userRole, notificationCount = 0 }: DashboardHeaderProps) {
+export default function DashboardHeader({ 
+  userName, 
+  userRole, 
+  notificationCount = 0, 
+  title, 
+  subtitle, 
+  action 
+}: DashboardHeaderProps) {
+  if (title || subtitle) {
+    return (
+      <header className="border-b bg-background px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">{title}</h1>
+            {subtitle && <p className="text-muted-foreground mt-1">{subtitle}</p>}
+          </div>
+          {action && <div>{action}</div>}
+        </div>
+      </header>
+    );
+  }
+
   return (
     <header className="h-16 border-b bg-background flex items-center justify-between px-6">
       <div className="flex items-center gap-4">
@@ -46,10 +70,10 @@ export default function DashboardHeader({ userName, userRole, notificationCount 
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="gap-2" data-testid="button-user-menu">
               <Avatar className="w-8 h-8">
-                <AvatarImage src="" alt={userName} />
-                <AvatarFallback>{userName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                <AvatarImage src="" alt={userName || "User"} />
+                <AvatarFallback>{userName?.split(' ').map(n => n[0]).join('') || 'U'}</AvatarFallback>
               </Avatar>
-              <span className="hidden md:inline text-sm font-medium">{userName}</span>
+              <span className="hidden md:inline text-sm font-medium">{userName || "User"}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
