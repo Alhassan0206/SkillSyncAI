@@ -556,6 +556,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/job-seeker/billing/status', isAuthenticated, async (req: any, res) => {
+    try {
+      if (!stripe) {
+        return res.json({
+          stripeConfigured: false,
+          configured: false,
+          message: "Stripe is not configured. Subscription features are coming soon."
+        });
+      }
+
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      const tenant = user?.tenantId ? await storage.getTenant(user.tenantId) : null;
+
+      if (tenant?.stripeSubscriptionId) {
+        try {
+          const subscription = await stripe.subscriptions.retrieve(tenant.stripeSubscriptionId);
+          const currentPeriodEnd = (subscription as any).current_period_end || 0;
+          return res.json({
+            stripeConfigured: true,
+            configured: true,
+            hasSubscription: true,
+            subscription: {
+              id: subscription.id,
+              status: subscription.status,
+              current_period_end: typeof currentPeriodEnd === 'number' ? currentPeriodEnd : Number(currentPeriodEnd),
+              plan: subscription.items.data[0]?.price.nickname || tenant.plan,
+            }
+          });
+        } catch (error) {
+          console.error("Error retrieving subscription:", error);
+        }
+      }
+
+      res.json({
+        stripeConfigured: true,
+        configured: true,
+        hasSubscription: false,
+        plan: tenant?.plan || 'free',
+      });
+    } catch (error) {
+      console.error("Error fetching billing status:", error);
+      res.status(500).json({ message: "Failed to fetch billing status" });
+    }
+  });
+
   app.get('/api/employer/billing/status', isAuthenticated, async (req: any, res) => {
     try {
       if (!stripe) {

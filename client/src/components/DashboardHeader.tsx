@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import ThemeToggle from "./ThemeToggle";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useLocation } from "wouter";
 
 interface DashboardHeaderProps {
   userName?: string;
@@ -20,6 +21,7 @@ interface DashboardHeaderProps {
   title?: string;
   subtitle?: string;
   action?: React.ReactNode;
+  rolePrefix?: string;
 }
 
 export default function DashboardHeader({ 
@@ -28,8 +30,20 @@ export default function DashboardHeader({
   notificationCount = 0, 
   title, 
   subtitle, 
-  action 
+  action,
+  rolePrefix = "/dashboard"
 }: DashboardHeaderProps) {
+  const [, setLocation] = useLocation();
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Logout failed:', error);
+      window.location.href = '/';
+    }
+  };
   if (title || subtitle) {
     return (
       <header className="border-b bg-background px-6 py-4">
@@ -79,11 +93,31 @@ export default function DashboardHeader({
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem data-testid="menu-profile">Profile</DropdownMenuItem>
-            <DropdownMenuItem data-testid="menu-settings">Settings</DropdownMenuItem>
-            <DropdownMenuItem data-testid="menu-billing">Billing</DropdownMenuItem>
+            <DropdownMenuItem 
+              data-testid="menu-profile"
+              onClick={() => setLocation(`${rolePrefix}/profile`)}
+            >
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              data-testid="menu-settings"
+              onClick={() => setLocation(`${rolePrefix}/settings`)}
+            >
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              data-testid="menu-billing"
+              onClick={() => setLocation(`${rolePrefix}/billing`)}
+            >
+              Billing
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem data-testid="menu-logout">Log out</DropdownMenuItem>
+            <DropdownMenuItem 
+              data-testid="menu-logout"
+              onClick={handleLogout}
+            >
+              Log out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
