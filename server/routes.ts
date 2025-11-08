@@ -3,9 +3,12 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { aiService } from "./aiService";
-import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema, insertMatchSchema, insertLearningPlanSchema, insertTeamInvitationSchema } from "@shared/schema";
+import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema, insertMatchSchema, insertLearningPlanSchema, insertTeamInvitationSchema, insertPasswordResetTokenSchema } from "@shared/schema";
 import Stripe from "stripe";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
+import { authEnhancements, require2FA } from "./authEnhancements";
+import bcrypt from "bcryptjs";
+import { setupOAuth } from "./oauth";
 
 const stripe = process.env.STRIPE_SECRET_KEY 
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2025-10-29.clover" })
@@ -13,6 +16,7 @@ const stripe = process.env.STRIPE_SECRET_KEY
 
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
+  setupOAuth(app);
 
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
@@ -90,6 +94,211 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post('/api/auth/forgot-password', async (req: any, res) => {
+    try {
+      const { email } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ message: "Email is required" });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      
+      if (!user) {
+        return res.json({ message: "If email exists, reset link sent" });
+      }
+
+      await storage.deletePasswordResetTokensByUserId(user.id);
+
+      const { token, hashedToken } = authEnhancements.generatePasswordResetToken();
+      const expiresAt = new Date(Date.now() + 3600000);
+
+      await storage.createPasswordResetToken({
+        userId: user.id,
+        email: user.email!,
+        token: hashedToken,
+        expiresAt,
+      });
+
+      await authEnhancements.sendPasswordResetEmail(email, token, user.id);
+      
+      res.json({ message: "If email exists, reset link sent" });
+    } catch (error) {
+      console.error("Password reset error:", error);
+      res.status(500).json({ message: "Failed to process request" });
+    }
+  });
+
+  app.post('/api/auth/reset-password', async (req: any, res) => {
+    try {
+      const { token, userId, newPassword } = req.body;
+      
+      if (!token || !userId || !newPassword) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const hashedToken = createHash("sha256").update(token).digest("hex");
+      
+      const resetToken = await storage.getPasswordResetToken(userId, hashedToken);
+      
+      if (!resetToken || resetToken.expiresAt < new Date()) {
+        return res.status(400).json({ message: "Invalid or expired token" });
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+      await storage.updateUserPassword(userId, hashedPassword);
+      await storage.deletePasswordResetToken(resetToken.id);
+      
+      res.json({ message: "Password reset successful" });
+    } catch (error) {
+      console.error("Password reset error:", error);
+      res.status(500).json({ message: "Failed to reset password" });
+    }
+  });
+
+  app.post('/api/auth/2fa/setup', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (!['employer', 'admin'].includes(user.role || '')) {
+        return res.status(403).json({ message: "2FA only available for employers and admins" });
+      }
+
+      if (user.twoFactorEnabled && !req.session?.twoFactorVerified) {
+        return res.status(403).json({ 
+          message: "2FA verification required to change settings",
+          requires2FA: true 
+        });
+      }
+
+      const { secret, otpauthUrl } = authEnhancements.generate2FASecret(user.email!);
+      const qrCode = await authEnhancements.generate2FAQRCode(otpauthUrl);
+
+      await storage.upsertUser({
+        ...user,
+        twoFactorSecret: secret,
+        twoFactorEnabled: false,
+      });
+
+      res.json({
+        secret,
+        qrCode,
+        backupCodes: authEnhancements.generateBackupCodes(),
+      });
+    } catch (error) {
+      console.error("2FA setup error:", error);
+      res.status(500).json({ message: "Failed to setup 2FA" });
+    }
+  });
+
+  app.post('/api/auth/2fa/verify-setup', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { token } = req.body;
+      
+      if (!token) {
+        return res.status(400).json({ message: "Token is required" });
+      }
+
+      const user = await storage.getUser(userId);
+      
+      if (!user || !user.twoFactorSecret) {
+        return res.status(400).json({ message: "2FA not setup" });
+      }
+
+      const verified = authEnhancements.verify2FAToken(user.twoFactorSecret, token, 2);
+      
+      if (verified) {
+        await storage.upsertUser({
+          ...user,
+          twoFactorEnabled: true,
+        });
+        
+        res.json({ success: true, message: "2FA enabled successfully" });
+      } else {
+        res.status(401).json({ success: false, message: "Invalid token" });
+      }
+    } catch (error) {
+      console.error("2FA verification error:", error);
+      res.status(500).json({ message: "Failed to verify 2FA" });
+    }
+  });
+
+  app.post('/api/auth/2fa/validate', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { token } = req.body;
+      
+      if (!token) {
+        return res.status(400).json({ message: "Token is required" });
+      }
+
+      const user = await storage.getUser(userId);
+      
+      if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+        return res.status(400).json({ message: "2FA not enabled" });
+      }
+
+      const isValid = authEnhancements.verify2FAToken(user.twoFactorSecret, token, 1);
+      
+      if (isValid && req.session) {
+        req.session.twoFactorVerified = true;
+      }
+      
+      res.json({ authenticated: isValid });
+    } catch (error) {
+      console.error("2FA validation error:", error);
+      res.status(500).json({ message: "Failed to validate 2FA" });
+    }
+  });
+
+  app.get('/api/auth/2fa/status', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json({
+        enabled: user.twoFactorEnabled || false,
+        verified: req.session?.twoFactorVerified || false,
+        required: user.twoFactorEnabled && !req.session?.twoFactorVerified,
+      });
+    } catch (error) {
+      console.error("2FA status error:", error);
+      res.status(500).json({ message: "Failed to get 2FA status" });
+    }
+  });
+
+  app.post('/api/auth/2fa/disable', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      await storage.upsertUser({
+        ...user,
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
+      });
+      
+      res.json({ message: "2FA disabled successfully" });
+    } catch (error) {
+      console.error("2FA disable error:", error);
+      res.status(500).json({ message: "Failed to disable 2FA" });
+    }
+  });
+
   app.get('/api/job-seeker/profile', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
@@ -135,7 +344,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/employer/profile', isAuthenticated, async (req: any, res) => {
+  app.get('/api/employer/profile', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const employer = await storage.getEmployer(userId);
@@ -145,7 +354,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/employer/profile', isAuthenticated, async (req: any, res) => {
+  app.post('/api/employer/profile', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const validatedData = insertEmployerSchema.partial().parse(req.body);
@@ -192,7 +401,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/employer/jobs', isAuthenticated, async (req: any, res) => {
+  app.get('/api/employer/jobs', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const employer = await storage.getEmployer(userId);
@@ -208,7 +417,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/employer/jobs', isAuthenticated, async (req: any, res) => {
+  app.post('/api/employer/jobs', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const employer = await storage.getEmployer(userId);
@@ -233,7 +442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/employer/jobs/:id', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/employer/jobs/:id', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const validatedData = insertJobSchema.partial().parse(req.body);
       const updated = await storage.updateJob(req.params.id, validatedData);
@@ -293,7 +502,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/employer/applications', isAuthenticated, async (req: any, res) => {
+  app.get('/api/employer/applications', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const employer = await storage.getEmployer(userId);
@@ -496,7 +705,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/admin/stats', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/stats', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -524,7 +733,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/admin/tenants', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/tenants', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -540,7 +749,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/admin/users', isAuthenticated, async (req: any, res) => {
+  app.get('/api/admin/users', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -608,7 +817,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/employer/billing/status', isAuthenticated, async (req: any, res) => {
+  app.get('/api/employer/billing/status', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       if (!stripe) {
         return res.json({
@@ -657,7 +866,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/employer/billing/create-checkout', isAuthenticated, async (req: any, res) => {
+  app.post('/api/employer/billing/create-checkout', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       if (!stripe) {
         return res.status(503).json({ message: "Stripe is not configured" });
@@ -740,7 +949,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/employer/billing/create-portal', isAuthenticated, async (req: any, res) => {
+  app.post('/api/employer/billing/create-portal', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       if (!stripe) {
         return res.status(503).json({ message: "Stripe is not configured" });
@@ -819,7 +1028,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ received: true });
   });
 
-  app.get('/api/employer/team/members', isAuthenticated, async (req: any, res) => {
+  app.get('/api/employer/team/members', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -836,7 +1045,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/employer/team/invitations', isAuthenticated, async (req: any, res) => {
+  app.get('/api/employer/team/invitations', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -853,7 +1062,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/employer/team/invite', isAuthenticated, async (req: any, res) => {
+  app.post('/api/employer/team/invite', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -896,7 +1105,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/employer/team/invitation/:id', isAuthenticated, async (req: any, res) => {
+  app.delete('/api/employer/team/invitation/:id', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);

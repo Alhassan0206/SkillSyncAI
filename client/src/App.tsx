@@ -6,6 +6,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
+import Features from "@/pages/Features";
+import Pricing from "@/pages/Pricing";
+import About from "@/pages/About";
+import Contact from "@/pages/Contact";
+import Resources from "@/pages/Resources";
 import RoleSelection from "@/pages/RoleSelection";
 import JobSeekerDashboard from "@/pages/JobSeekerDashboard";
 import EmployerDashboard from "@/pages/EmployerDashboard";
@@ -33,6 +38,11 @@ function Router() {
     return (
       <Switch>
         <Route path="/" component={Landing} />
+        <Route path="/features" component={Features} />
+        <Route path="/pricing" component={Pricing} />
+        <Route path="/about" component={About} />
+        <Route path="/contact" component={Contact} />
+        <Route path="/resources" component={Resources} />
         <Route component={Landing} />
       </Switch>
     );

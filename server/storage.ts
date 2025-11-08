@@ -47,6 +47,12 @@ export interface IStorage {
   createTeamInvitation(invitation: schema.InsertTeamInvitation): Promise<schema.TeamInvitation>;
   updateTeamInvitation(id: string, data: Partial<schema.InsertTeamInvitation>): Promise<schema.TeamInvitation>;
   getTeamMembers(tenantId: string): Promise<schema.User[]>;
+  
+  createPasswordResetToken(token: schema.InsertPasswordResetToken): Promise<schema.PasswordResetToken>;
+  getPasswordResetToken(userId: string, token: string): Promise<schema.PasswordResetToken | undefined>;
+  deletePasswordResetToken(id: string): Promise<void>;
+  deletePasswordResetTokensByUserId(userId: string): Promise<void>;
+  updateUserPassword(userId: string, hashedPassword: string): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -275,6 +281,38 @@ export class DbStorage implements IStorage {
 
   async getTeamMembers(tenantId: string): Promise<schema.User[]> {
     return db.select().from(schema.users).where(eq(schema.users.tenantId, tenantId));
+  }
+
+  async createPasswordResetToken(insertToken: schema.InsertPasswordResetToken): Promise<schema.PasswordResetToken> {
+    const [token] = await db.insert(schema.passwordResetTokens).values(insertToken).returning();
+    return token;
+  }
+
+  async getPasswordResetToken(userId: string, token: string): Promise<schema.PasswordResetToken | undefined> {
+    const { and } = await import("drizzle-orm");
+    const [resetToken] = await db
+      .select()
+      .from(schema.passwordResetTokens)
+      .where(and(
+        eq(schema.passwordResetTokens.userId, userId),
+        eq(schema.passwordResetTokens.token, token)
+      ));
+    return resetToken;
+  }
+
+  async deletePasswordResetToken(id: string): Promise<void> {
+    await db.delete(schema.passwordResetTokens).where(eq(schema.passwordResetTokens.id, id));
+  }
+
+  async deletePasswordResetTokensByUserId(userId: string): Promise<void> {
+    await db.delete(schema.passwordResetTokens).where(eq(schema.passwordResetTokens.userId, userId));
+  }
+
+  async updateUserPassword(userId: string, hashedPassword: string): Promise<void> {
+    await db
+      .update(schema.users)
+      .set({ password: hashedPassword })
+      .where(eq(schema.users.id, userId));
   }
 }
 
