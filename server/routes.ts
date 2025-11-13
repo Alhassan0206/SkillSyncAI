@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { aiService } from "./aiService";
-import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema, insertMatchSchema, insertLearningPlanSchema, insertTeamInvitationSchema, insertPasswordResetTokenSchema } from "@shared/schema";
+import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema, insertMatchSchema, insertLearningPlanSchema, insertTeamInvitationSchema, insertPasswordResetTokenSchema, insertCandidateTagSchema, insertCandidateNoteSchema, insertCandidateRatingSchema, insertGithubRepoSchema, insertResumeParseQueueSchema } from "@shared/schema";
 import Stripe from "stripe";
 import { randomBytes, createHash } from "crypto";
 import { authEnhancements, require2FA } from "./authEnhancements";
@@ -452,6 +452,186 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid job data", errors: error });
       }
       res.status(500).json({ message: "Failed to update job" });
+    }
+  });
+
+  app.post('/api/employer/jobs/:id/parse', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const job = await storage.getJobById(req.params.id);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+
+      if (job.employerId !== employer.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const parsedData = await aiService.parseJobDescription(job.title, job.description);
+      
+      const updated = await storage.updateJob(job.id, {
+        aiProcessed: true,
+        aiParsedData: parsedData,
+        requiredSkills: parsedData.extractedSkills,
+        experienceLevel: parsedData.extractedSeniority,
+        salaryMin: parsedData.suggestedSalaryMin,
+        salaryMax: parsedData.suggestedSalaryMax,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error parsing job:", error);
+      res.status(500).json({ message: "Failed to parse job description" });
+    }
+  });
+
+  app.post('/api/employer/jobs/:id/duplicate', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const originalJob = await storage.getJobById(req.params.id);
+      if (!originalJob) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+
+      if (originalJob.employerId !== employer.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const newJob = await storage.createJob({
+        employerId: originalJob.employerId,
+        title: `${originalJob.title} (Copy)`,
+        description: originalJob.description,
+        location: originalJob.location,
+        remote: originalJob.remote,
+        salaryMin: originalJob.salaryMin,
+        salaryMax: originalJob.salaryMax,
+        salaryCurrency: originalJob.salaryCurrency,
+        requiredSkills: originalJob.requiredSkills,
+        preferredSkills: originalJob.preferredSkills,
+        experienceLevel: originalJob.experienceLevel,
+        employmentType: originalJob.employmentType,
+        status: "draft",
+        aiProcessed: false,
+      });
+
+      res.json(newJob);
+    } catch (error) {
+      console.error("Error duplicating job:", error);
+      res.status(500).json({ message: "Failed to duplicate job" });
+    }
+  });
+
+  app.post('/api/employer/jobs/:id/publish', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const job = await storage.getJobById(req.params.id);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+
+      if (job.employerId !== employer.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const updated = await storage.updateJob(req.params.id, {
+        status: "active",
+        publishedAt: new Date(),
+      });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to publish job" });
+    }
+  });
+
+  app.post('/api/employer/jobs/:id/archive', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const job = await storage.getJobById(req.params.id);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+
+      if (job.employerId !== employer.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const updated = await storage.updateJob(req.params.id, {
+        status: "archived",
+        archivedAt: new Date(),
+      });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to archive job" });
+    }
+  });
+
+  app.post('/api/employer/jobs/:id/reopen', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const job = await storage.getJobById(req.params.id);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+
+      if (job.employerId !== employer.id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const updated = await storage.updateJob(req.params.id, {
+        status: "active",
+        archivedAt: null,
+      });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to reopen job" });
+    }
+  });
+
+  app.get('/api/jobs/search', async (req: any, res) => {
+    try {
+      const { skills, location, minSalary, maxSalary, experienceLevel, remote } = req.query;
+      const jobs = await storage.searchJobs({
+        skills: skills ? skills.split(',') : undefined,
+        location,
+        minSalary: minSalary ? parseInt(minSalary) : undefined,
+        maxSalary: maxSalary ? parseInt(maxSalary) : undefined,
+        experienceLevel,
+        remote: remote === 'true' ? true : remote === 'false' ? false : undefined,
+      });
+      res.json(jobs);
+    } catch (error) {
+      console.error("Error searching jobs:", error);
+      res.status(500).json({ message: "Failed to search jobs" });
     }
   });
 

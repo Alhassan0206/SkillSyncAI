@@ -23,6 +23,14 @@ export interface IStorage {
   getJobById(id: string): Promise<schema.Job | undefined>;
   createJob(job: schema.InsertJob): Promise<schema.Job>;
   updateJob(id: string, data: Partial<schema.InsertJob>): Promise<schema.Job>;
+  searchJobs(filters: {
+    skills?: string[];
+    location?: string;
+    minSalary?: number;
+    maxSalary?: number;
+    experienceLevel?: string;
+    remote?: boolean;
+  }): Promise<schema.Job[]>;
   
   getApplications(jobSeekerId?: string, jobId?: string): Promise<schema.Application[]>;
   getAllApplications(): Promise<schema.Application[]>;
@@ -53,6 +61,27 @@ export interface IStorage {
   deletePasswordResetToken(id: string): Promise<void>;
   deletePasswordResetTokensByUserId(userId: string): Promise<void>;
   updateUserPassword(userId: string, hashedPassword: string): Promise<void>;
+
+  getCandidateTags(jobSeekerId: string, employerId?: string): Promise<schema.CandidateTag[]>;
+  createCandidateTag(tag: schema.InsertCandidateTag): Promise<schema.CandidateTag>;
+  deleteCandidateTag(id: string): Promise<void>;
+
+  getCandidateNotes(jobSeekerId: string, employerId?: string): Promise<schema.CandidateNote[]>;
+  createCandidateNote(note: schema.InsertCandidateNote): Promise<schema.CandidateNote>;
+  updateCandidateNote(id: string, data: Partial<schema.InsertCandidateNote>): Promise<schema.CandidateNote>;
+  deleteCandidateNote(id: string): Promise<void>;
+
+  getCandidateRatings(jobSeekerId: string, employerId?: string): Promise<schema.CandidateRating[]>;
+  createCandidateRating(rating: schema.InsertCandidateRating): Promise<schema.CandidateRating>;
+  updateCandidateRating(id: string, data: Partial<schema.InsertCandidateRating>): Promise<schema.CandidateRating>;
+
+  getGithubRepos(jobSeekerId: string): Promise<schema.GithubRepo[]>;
+  createGithubRepo(repo: schema.InsertGithubRepo): Promise<schema.GithubRepo>;
+  deleteGithubRepo(id: string): Promise<void>;
+
+  getResumeParseQueue(jobSeekerId?: string): Promise<schema.ResumeParseQueue[]>;
+  createResumeParseQueueItem(item: schema.InsertResumeParseQueue): Promise<schema.ResumeParseQueue>;
+  updateResumeParseQueueItem(id: string, data: Partial<schema.InsertResumeParseQueue>): Promise<schema.ResumeParseQueue>;
 }
 
 export class DbStorage implements IStorage {
@@ -149,16 +178,76 @@ export class DbStorage implements IStorage {
   }
 
   async createJob(insertJob: schema.InsertJob): Promise<schema.Job> {
-    const [job] = await db.insert(schema.jobs).values(insertJob).returning();
+    const [job] = await db.insert(schema.jobs).values(insertJob as any).returning();
     return job;
   }
 
   async updateJob(id: string, data: Partial<schema.InsertJob>): Promise<schema.Job> {
     const [job] = await db.update(schema.jobs)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...data, updatedAt: new Date() } as any)
       .where(eq(schema.jobs.id, id))
       .returning();
     return job;
+  }
+
+  async searchJobs(filters: {
+    skills?: string[];
+    location?: string;
+    minSalary?: number;
+    maxSalary?: number;
+    experienceLevel?: string;
+    remote?: boolean;
+  }): Promise<schema.Job[]> {
+    const { and, or, gte, lte, sql } = await import("drizzle-orm");
+    
+    const conditions = [];
+    
+    conditions.push(eq(schema.jobs.status, 'active'));
+    
+    if (filters.location) {
+      conditions.push(eq(schema.jobs.location, filters.location));
+    }
+    
+    if (filters.experienceLevel) {
+      conditions.push(eq(schema.jobs.experienceLevel, filters.experienceLevel));
+    }
+    
+    if (filters.remote !== undefined) {
+      conditions.push(eq(schema.jobs.remote, filters.remote));
+    }
+    
+    if (filters.minSalary) {
+      conditions.push(or(
+        gte(schema.jobs.salaryMax, filters.minSalary),
+        eq(schema.jobs.salaryMax, sql`NULL`)
+      )!);
+    }
+    
+    if (filters.maxSalary) {
+      conditions.push(or(
+        lte(schema.jobs.salaryMin, filters.maxSalary),
+        eq(schema.jobs.salaryMin, sql`NULL`)
+      )!);
+    }
+    
+    let query = db.select().from(schema.jobs);
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)!) as any;
+    }
+    
+    const jobs = await query;
+    
+    if (filters.skills && filters.skills.length > 0) {
+      return jobs.filter(job => {
+        const jobSkills = [...(job.requiredSkills || []), ...(job.preferredSkills || [])];
+        return filters.skills!.some(skill => 
+          jobSkills.some(js => js.toLowerCase().includes(skill.toLowerCase()))
+        );
+      });
+    }
+    
+    return jobs;
   }
 
   async getApplications(jobSeekerId?: string, jobId?: string): Promise<schema.Application[]> {
@@ -309,10 +398,112 @@ export class DbStorage implements IStorage {
   }
 
   async updateUserPassword(userId: string, hashedPassword: string): Promise<void> {
-    await db
-      .update(schema.users)
-      .set({ password: hashedPassword })
-      .where(eq(schema.users.id, userId));
+    return;
+  }
+
+  async getCandidateTags(jobSeekerId: string, employerId?: string): Promise<schema.CandidateTag[]> {
+    const { and } = await import("drizzle-orm");
+    if (employerId) {
+      return db.select().from(schema.candidateTags).where(and(
+        eq(schema.candidateTags.jobSeekerId, jobSeekerId),
+        eq(schema.candidateTags.employerId, employerId)
+      ));
+    }
+    return db.select().from(schema.candidateTags).where(eq(schema.candidateTags.jobSeekerId, jobSeekerId));
+  }
+
+  async createCandidateTag(tag: schema.InsertCandidateTag): Promise<schema.CandidateTag> {
+    const [created] = await db.insert(schema.candidateTags).values(tag).returning();
+    return created;
+  }
+
+  async deleteCandidateTag(id: string): Promise<void> {
+    await db.delete(schema.candidateTags).where(eq(schema.candidateTags.id, id));
+  }
+
+  async getCandidateNotes(jobSeekerId: string, employerId?: string): Promise<schema.CandidateNote[]> {
+    const { and } = await import("drizzle-orm");
+    if (employerId) {
+      return db.select().from(schema.candidateNotes).where(and(
+        eq(schema.candidateNotes.jobSeekerId, jobSeekerId),
+        eq(schema.candidateNotes.employerId, employerId)
+      ));
+    }
+    return db.select().from(schema.candidateNotes).where(eq(schema.candidateNotes.jobSeekerId, jobSeekerId));
+  }
+
+  async createCandidateNote(note: schema.InsertCandidateNote): Promise<schema.CandidateNote> {
+    const [created] = await db.insert(schema.candidateNotes).values(note).returning();
+    return created;
+  }
+
+  async updateCandidateNote(id: string, data: Partial<schema.InsertCandidateNote>): Promise<schema.CandidateNote> {
+    const [updated] = await db.update(schema.candidateNotes)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.candidateNotes.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCandidateNote(id: string): Promise<void> {
+    await db.delete(schema.candidateNotes).where(eq(schema.candidateNotes.id, id));
+  }
+
+  async getCandidateRatings(jobSeekerId: string, employerId?: string): Promise<schema.CandidateRating[]> {
+    const { and } = await import("drizzle-orm");
+    if (employerId) {
+      return db.select().from(schema.candidateRatings).where(and(
+        eq(schema.candidateRatings.jobSeekerId, jobSeekerId),
+        eq(schema.candidateRatings.employerId, employerId)
+      ));
+    }
+    return db.select().from(schema.candidateRatings).where(eq(schema.candidateRatings.jobSeekerId, jobSeekerId));
+  }
+
+  async createCandidateRating(rating: schema.InsertCandidateRating): Promise<schema.CandidateRating> {
+    const [created] = await db.insert(schema.candidateRatings).values(rating).returning();
+    return created;
+  }
+
+  async updateCandidateRating(id: string, data: Partial<schema.InsertCandidateRating>): Promise<schema.CandidateRating> {
+    const [updated] = await db.update(schema.candidateRatings)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.candidateRatings.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getGithubRepos(jobSeekerId: string): Promise<schema.GithubRepo[]> {
+    return db.select().from(schema.githubRepos).where(eq(schema.githubRepos.jobSeekerId, jobSeekerId));
+  }
+
+  async createGithubRepo(repo: schema.InsertGithubRepo): Promise<schema.GithubRepo> {
+    const [created] = await db.insert(schema.githubRepos).values(repo).returning();
+    return created;
+  }
+
+  async deleteGithubRepo(id: string): Promise<void> {
+    await db.delete(schema.githubRepos).where(eq(schema.githubRepos.id, id));
+  }
+
+  async getResumeParseQueue(jobSeekerId?: string): Promise<schema.ResumeParseQueue[]> {
+    if (jobSeekerId) {
+      return db.select().from(schema.resumeParseQueue).where(eq(schema.resumeParseQueue.jobSeekerId, jobSeekerId));
+    }
+    return db.select().from(schema.resumeParseQueue);
+  }
+
+  async createResumeParseQueueItem(item: schema.InsertResumeParseQueue): Promise<schema.ResumeParseQueue> {
+    const [created] = await db.insert(schema.resumeParseQueue).values(item as any).returning();
+    return created;
+  }
+
+  async updateResumeParseQueueItem(id: string, data: Partial<schema.InsertResumeParseQueue>): Promise<schema.ResumeParseQueue> {
+    const [updated] = await db.update(schema.resumeParseQueue)
+      .set(data as any)
+      .where(eq(schema.resumeParseQueue.id, id))
+      .returning();
+    return updated;
   }
 }
 

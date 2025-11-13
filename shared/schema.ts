@@ -86,8 +86,17 @@ export const jobs = pgTable("jobs", {
   preferredSkills: text("preferred_skills").array(),
   experienceLevel: text("experience_level"),
   employmentType: text("employment_type"),
-  status: text("status").notNull().default("active"),
+  status: text("status").notNull().default("draft"),
   aiProcessed: boolean("ai_processed").default(false),
+  aiParsedData: jsonb("ai_parsed_data").$type<{
+    extractedSkills?: string[];
+    extractedSeniority?: string;
+    suggestedSalaryMin?: number;
+    suggestedSalaryMax?: number;
+    confidence?: number;
+  }>(),
+  publishedAt: timestamp("published_at"),
+  archivedAt: timestamp("archived_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -160,6 +169,66 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const candidateTags = pgTable("candidate_tags", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobSeekerId: varchar("job_seeker_id").notNull().references(() => jobSeekers.id),
+  employerId: varchar("employer_id").notNull().references(() => employers.id),
+  tag: text("tag").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const candidateNotes = pgTable("candidate_notes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobSeekerId: varchar("job_seeker_id").notNull().references(() => jobSeekers.id),
+  employerId: varchar("employer_id").notNull().references(() => employers.id),
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  note: text("note").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const candidateRatings = pgTable("candidate_ratings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobSeekerId: varchar("job_seeker_id").notNull().references(() => jobSeekers.id),
+  employerId: varchar("employer_id").notNull().references(() => employers.id),
+  createdBy: varchar("created_by").notNull().references(() => users.id),
+  rating: integer("rating").notNull(),
+  category: text("category").notNull(),
+  feedback: text("feedback"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const githubRepos = pgTable("github_repos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobSeekerId: varchar("job_seeker_id").notNull().references(() => jobSeekers.id),
+  repoName: text("repo_name").notNull(),
+  repoUrl: text("repo_url").notNull(),
+  description: text("description"),
+  language: text("language"),
+  stars: integer("stars").default(0),
+  forks: integer("forks").default(0),
+  topics: text("topics").array(),
+  lastUpdated: timestamp("last_updated"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const resumeParseQueue = pgTable("resume_parse_queue", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobSeekerId: varchar("job_seeker_id").notNull().references(() => jobSeekers.id),
+  resumeUrl: text("resume_url").notNull(),
+  status: text("status").notNull().default("pending"),
+  parsedData: jsonb("parsed_data").$type<{
+    skills?: string[];
+    experience?: string;
+    education?: string[];
+    summary?: string;
+  }>(),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  processedAt: timestamp("processed_at"),
+});
+
 export const insertTenantSchema = createInsertSchema(tenants).omit({ id: true, createdAt: true });
 export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true, updatedAt: true });
 export const upsertUserSchema = createInsertSchema(users).omit({ createdAt: true, updatedAt: true });
@@ -171,6 +240,11 @@ export const insertMatchSchema = createInsertSchema(matches).omit({ id: true, cr
 export const insertLearningPlanSchema = createInsertSchema(learningPlans).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTeamInvitationSchema = createInsertSchema(teamInvitations).omit({ id: true, createdAt: true });
 export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({ id: true, createdAt: true });
+export const insertCandidateTagSchema = createInsertSchema(candidateTags).omit({ id: true, createdAt: true });
+export const insertCandidateNoteSchema = createInsertSchema(candidateNotes).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCandidateRatingSchema = createInsertSchema(candidateRatings).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertGithubRepoSchema = createInsertSchema(githubRepos).omit({ id: true, createdAt: true });
+export const insertResumeParseQueueSchema = createInsertSchema(resumeParseQueue).omit({ id: true, createdAt: true, processedAt: true });
 
 export type Tenant = typeof tenants.$inferSelect;
 export type InsertTenant = z.infer<typeof insertTenantSchema>;
@@ -202,3 +276,18 @@ export type InsertTeamInvitation = z.infer<typeof insertTeamInvitationSchema>;
 
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
+
+export type CandidateTag = typeof candidateTags.$inferSelect;
+export type InsertCandidateTag = z.infer<typeof insertCandidateTagSchema>;
+
+export type CandidateNote = typeof candidateNotes.$inferSelect;
+export type InsertCandidateNote = z.infer<typeof insertCandidateNoteSchema>;
+
+export type CandidateRating = typeof candidateRatings.$inferSelect;
+export type InsertCandidateRating = z.infer<typeof insertCandidateRatingSchema>;
+
+export type GithubRepo = typeof githubRepos.$inferSelect;
+export type InsertGithubRepo = z.infer<typeof insertGithubRepoSchema>;
+
+export type ResumeParseQueue = typeof resumeParseQueue.$inferSelect;
+export type InsertResumeParseQueue = z.infer<typeof insertResumeParseQueueSchema>;

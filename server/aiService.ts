@@ -242,6 +242,117 @@ Focus on:
       return [];
     }
   }
+
+  async parseJobDescription(title: string, description: string): Promise<{
+    extractedSkills: string[];
+    extractedSeniority: string;
+    suggestedSalaryMin: number;
+    suggestedSalaryMax: number;
+    confidence: number;
+  }> {
+    const prompt = `Analyze this job posting and extract key information.
+
+Job Title: ${title}
+Description: ${description}
+
+Extract and analyze:
+1. Required and preferred skills/technologies
+2. Seniority level (entry, mid, senior, lead, principal)
+3. Suggested salary range in USD based on market standards for this role and seniority
+4. Your confidence in these predictions (0-100)
+
+Respond in JSON format:
+{
+  "extractedSkills": <array of all skills, technologies, and tools mentioned or implied>,
+  "extractedSeniority": <"entry"|"mid"|"senior"|"lead"|"principal">,
+  "suggestedSalaryMin": <minimum annual salary in USD>,
+  "suggestedSalaryMax": <maximum annual salary in USD>,
+  "confidence": <0-100 number indicating confidence in these predictions>
+}`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert recruiter and compensation analyst with deep knowledge of tech job markets and salary trends.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || "{}");
+      return {
+        extractedSkills: result.extractedSkills || [],
+        extractedSeniority: result.extractedSeniority || "mid",
+        suggestedSalaryMin: result.suggestedSalaryMin || 0,
+        suggestedSalaryMax: result.suggestedSalaryMax || 0,
+        confidence: Math.min(100, Math.max(0, result.confidence || 70)),
+      };
+    } catch (error) {
+      console.error("Job description parsing error:", error);
+      throw new Error("Failed to parse job description");
+    }
+  }
+
+  async parseResumeText(resumeText: string): Promise<{
+    skills: string[];
+    experience: string;
+    education: string[];
+    summary: string;
+  }> {
+    const prompt = `Parse this resume and extract structured information.
+
+Resume:
+${resumeText}
+
+Extract:
+1. All technical and professional skills
+2. Years of experience and current role
+3. Education background (degrees, institutions)
+4. Professional summary (2-3 sentences)
+
+Respond in JSON format:
+{
+  "skills": <array of distinct skills>,
+  "experience": <"X years" or "Entry-level" or description of experience>,
+  "education": <array of education entries like "BS Computer Science - MIT">,
+  "summary": <2-3 sentence professional summary>
+}`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert resume parser that extracts structured data from resumes accurately.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || "{}");
+      return {
+        skills: result.skills || [],
+        experience: result.experience || "Not specified",
+        education: result.education || [],
+        summary: result.summary || "",
+      };
+    } catch (error) {
+      console.error("Resume parsing error:", error);
+      throw new Error("Failed to parse resume");
+    }
+  }
 }
 
 export const aiService = new AIService();
