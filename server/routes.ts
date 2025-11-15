@@ -715,6 +715,253 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/employer/candidates/:jobSeekerId/tags', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const tags = await storage.getCandidateTags(req.params.jobSeekerId, employer.id);
+      res.json(tags);
+    } catch (error) {
+      console.error("Error fetching candidate tags:", error);
+      res.status(500).json({ message: "Failed to fetch candidate tags" });
+    }
+  });
+
+  app.post('/api/employer/candidates/:jobSeekerId/tags', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const validatedData = insertCandidateTagSchema.parse({
+        jobSeekerId: req.params.jobSeekerId,
+        employerId: employer.id,
+        tag: req.body.tag,
+      });
+
+      const tag = await storage.createCandidateTag(validatedData);
+      res.json(tag);
+    } catch (error) {
+      console.error("Error creating candidate tag:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid tag data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to create candidate tag" });
+    }
+  });
+
+  app.delete('/api/employer/candidates/tags/:id', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const tags = await storage.getCandidateTags(undefined, employer.id);
+      const tag = tags.find(t => t.id === req.params.id);
+
+      if (!tag) {
+        return res.status(404).json({ message: "Tag not found or access denied" });
+      }
+
+      await storage.deleteCandidateTag(req.params.id);
+      res.json({ message: "Tag deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting candidate tag:", error);
+      res.status(500).json({ message: "Failed to delete candidate tag" });
+    }
+  });
+
+  app.get('/api/employer/candidates/:jobSeekerId/notes', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const notes = await storage.getCandidateNotes(req.params.jobSeekerId, employer.id);
+      res.json(notes);
+    } catch (error) {
+      console.error("Error fetching candidate notes:", error);
+      res.status(500).json({ message: "Failed to fetch candidate notes" });
+    }
+  });
+
+  app.post('/api/employer/candidates/:jobSeekerId/notes', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const validatedData = insertCandidateNoteSchema.parse({
+        jobSeekerId: req.params.jobSeekerId,
+        employerId: employer.id,
+        createdBy: userId,
+        note: req.body.note,
+      });
+
+      const note = await storage.createCandidateNote(validatedData);
+      res.json(note);
+    } catch (error) {
+      console.error("Error creating candidate note:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid note data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to create candidate note" });
+    }
+  });
+
+  app.patch('/api/employer/candidates/notes/:id', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const notes = await storage.getCandidateNotes(undefined, employer.id);
+      const existingNote = notes.find(n => n.id === req.params.id);
+
+      if (!existingNote) {
+        return res.status(404).json({ message: "Note not found or access denied" });
+      }
+
+      const safeUpdateData = {
+        note: req.body.note,
+      };
+
+      const validatedData = insertCandidateNoteSchema.partial().parse(safeUpdateData);
+      const updated = await storage.updateCandidateNote(req.params.id, validatedData);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating candidate note:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid note data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to update candidate note" });
+    }
+  });
+
+  app.delete('/api/employer/candidates/notes/:id', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const notes = await storage.getCandidateNotes(undefined, employer.id);
+      const note = notes.find(n => n.id === req.params.id);
+
+      if (!note) {
+        return res.status(404).json({ message: "Note not found or access denied" });
+      }
+
+      await storage.deleteCandidateNote(req.params.id);
+      res.json({ message: "Note deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting candidate note:", error);
+      res.status(500).json({ message: "Failed to delete candidate note" });
+    }
+  });
+
+  app.get('/api/employer/candidates/:jobSeekerId/ratings', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const ratings = await storage.getCandidateRatings(req.params.jobSeekerId, employer.id);
+      res.json(ratings);
+    } catch (error) {
+      console.error("Error fetching candidate ratings:", error);
+      res.status(500).json({ message: "Failed to fetch candidate ratings" });
+    }
+  });
+
+  app.post('/api/employer/candidates/:jobSeekerId/ratings', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const validatedData = insertCandidateRatingSchema.parse({
+        jobSeekerId: req.params.jobSeekerId,
+        employerId: employer.id,
+        createdBy: userId,
+        rating: req.body.rating,
+        category: req.body.category,
+        feedback: req.body.feedback,
+      });
+
+      const rating = await storage.createCandidateRating(validatedData);
+      res.json(rating);
+    } catch (error) {
+      console.error("Error creating candidate rating:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid rating data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to create candidate rating" });
+    }
+  });
+
+  app.patch('/api/employer/candidates/ratings/:id', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const ratings = await storage.getCandidateRatings(undefined, employer.id);
+      const existingRating = ratings.find(r => r.id === req.params.id);
+
+      if (!existingRating) {
+        return res.status(404).json({ message: "Rating not found or access denied" });
+      }
+
+      const safeUpdateData = {
+        rating: req.body.rating,
+        category: req.body.category,
+        feedback: req.body.feedback,
+      };
+
+      const validatedData = insertCandidateRatingSchema.partial().parse(safeUpdateData);
+      const updated = await storage.updateCandidateRating(req.params.id, validatedData);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating candidate rating:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid rating data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to update candidate rating" });
+    }
+  });
+
   app.post('/api/job-seeker/find-matches', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
@@ -882,6 +1129,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid learning plan data", errors: error });
       }
       res.status(500).json({ message: "Failed to update learning plan" });
+    }
+  });
+
+  app.post('/api/job-seeker/github/import', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      if (!user?.githubId) {
+        return res.status(400).json({ message: "GitHub account not connected" });
+      }
+
+      const githubToken = req.session?.githubAccessToken;
+      if (!githubToken) {
+        return res.status(401).json({ message: "GitHub authentication required. Please re-authenticate with GitHub." });
+      }
+
+      const response = await fetch('https://api.github.com/user/repos?sort=updated&per_page=100', {
+        headers: {
+          'Authorization': `Bearer ${githubToken}`,
+          'Accept': 'application/vnd.github.v3+json',
+        },
+      });
+
+      if (!response.ok) {
+        console.error("GitHub API error:", response.status, await response.text());
+        return res.status(response.status).json({ message: "Failed to fetch GitHub repositories" });
+      }
+
+      const repos = await response.json();
+      
+      const existingRepos = await storage.getGithubRepos(jobSeeker.id);
+      const existingRepoUrls = new Set(existingRepos.map(r => r.repoUrl));
+
+      const importedRepos = [];
+      for (const repo of repos) {
+        if (!repo.private && !existingRepoUrls.has(repo.html_url)) {
+          const importedRepo = await storage.createGithubRepo({
+            jobSeekerId: jobSeeker.id,
+            repoName: repo.full_name,
+            repoUrl: repo.html_url,
+            description: repo.description || null,
+            language: repo.language || null,
+            stars: repo.stargazers_count || 0,
+            forks: repo.forks_count || 0,
+            topics: repo.topics || [],
+            lastUpdated: repo.updated_at ? new Date(repo.updated_at) : null,
+          });
+          importedRepos.push(importedRepo);
+        }
+      }
+
+      res.json({
+        message: `Successfully imported ${importedRepos.length} repositories`,
+        imported: importedRepos.length,
+        total: repos.length,
+        repositories: importedRepos,
+      });
+    } catch (error) {
+      console.error("Error importing GitHub repos:", error);
+      res.status(500).json({ message: "Failed to import GitHub repositories" });
+    }
+  });
+
+  app.get('/api/job-seeker/github/repos', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      const repos = await storage.getGithubRepos(jobSeeker.id);
+      res.json(repos);
+    } catch (error) {
+      console.error("Error fetching GitHub repos:", error);
+      res.status(500).json({ message: "Failed to fetch GitHub repositories" });
+    }
+  });
+
+  app.delete('/api/job-seeker/github/repos/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      await storage.deleteGithubRepo(req.params.id);
+      res.json({ message: "Repository removed successfully" });
+    } catch (error) {
+      console.error("Error deleting GitHub repo:", error);
+      res.status(500).json({ message: "Failed to remove repository" });
     }
   });
 

@@ -62,16 +62,16 @@ export interface IStorage {
   deletePasswordResetTokensByUserId(userId: string): Promise<void>;
   updateUserPassword(userId: string, hashedPassword: string): Promise<void>;
 
-  getCandidateTags(jobSeekerId: string, employerId?: string): Promise<schema.CandidateTag[]>;
+  getCandidateTags(jobSeekerId?: string, employerId?: string): Promise<schema.CandidateTag[]>;
   createCandidateTag(tag: schema.InsertCandidateTag): Promise<schema.CandidateTag>;
   deleteCandidateTag(id: string): Promise<void>;
 
-  getCandidateNotes(jobSeekerId: string, employerId?: string): Promise<schema.CandidateNote[]>;
+  getCandidateNotes(jobSeekerId?: string, employerId?: string): Promise<schema.CandidateNote[]>;
   createCandidateNote(note: schema.InsertCandidateNote): Promise<schema.CandidateNote>;
   updateCandidateNote(id: string, data: Partial<schema.InsertCandidateNote>): Promise<schema.CandidateNote>;
   deleteCandidateNote(id: string): Promise<void>;
 
-  getCandidateRatings(jobSeekerId: string, employerId?: string): Promise<schema.CandidateRating[]>;
+  getCandidateRatings(jobSeekerId?: string, employerId?: string): Promise<schema.CandidateRating[]>;
   createCandidateRating(rating: schema.InsertCandidateRating): Promise<schema.CandidateRating>;
   updateCandidateRating(id: string, data: Partial<schema.InsertCandidateRating>): Promise<schema.CandidateRating>;
 
@@ -401,15 +401,19 @@ export class DbStorage implements IStorage {
     return;
   }
 
-  async getCandidateTags(jobSeekerId: string, employerId?: string): Promise<schema.CandidateTag[]> {
+  async getCandidateTags(jobSeekerId?: string, employerId?: string): Promise<schema.CandidateTag[]> {
     const { and } = await import("drizzle-orm");
-    if (employerId) {
-      return db.select().from(schema.candidateTags).where(and(
-        eq(schema.candidateTags.jobSeekerId, jobSeekerId),
-        eq(schema.candidateTags.employerId, employerId)
-      ));
+    const conditions = [];
+    if (jobSeekerId) {
+      conditions.push(eq(schema.candidateTags.jobSeekerId, jobSeekerId));
     }
-    return db.select().from(schema.candidateTags).where(eq(schema.candidateTags.jobSeekerId, jobSeekerId));
+    if (employerId) {
+      conditions.push(eq(schema.candidateTags.employerId, employerId));
+    }
+    if (conditions.length > 0) {
+      return db.select().from(schema.candidateTags).where(and(...conditions));
+    }
+    return db.select().from(schema.candidateTags);
   }
 
   async createCandidateTag(tag: schema.InsertCandidateTag): Promise<schema.CandidateTag> {
@@ -421,15 +425,19 @@ export class DbStorage implements IStorage {
     await db.delete(schema.candidateTags).where(eq(schema.candidateTags.id, id));
   }
 
-  async getCandidateNotes(jobSeekerId: string, employerId?: string): Promise<schema.CandidateNote[]> {
+  async getCandidateNotes(jobSeekerId?: string, employerId?: string): Promise<schema.CandidateNote[]> {
     const { and } = await import("drizzle-orm");
-    if (employerId) {
-      return db.select().from(schema.candidateNotes).where(and(
-        eq(schema.candidateNotes.jobSeekerId, jobSeekerId),
-        eq(schema.candidateNotes.employerId, employerId)
-      ));
+    const conditions = [];
+    if (jobSeekerId) {
+      conditions.push(eq(schema.candidateNotes.jobSeekerId, jobSeekerId));
     }
-    return db.select().from(schema.candidateNotes).where(eq(schema.candidateNotes.jobSeekerId, jobSeekerId));
+    if (employerId) {
+      conditions.push(eq(schema.candidateNotes.employerId, employerId));
+    }
+    if (conditions.length > 0) {
+      return db.select().from(schema.candidateNotes).where(and(...conditions));
+    }
+    return db.select().from(schema.candidateNotes);
   }
 
   async createCandidateNote(note: schema.InsertCandidateNote): Promise<schema.CandidateNote> {
@@ -449,15 +457,19 @@ export class DbStorage implements IStorage {
     await db.delete(schema.candidateNotes).where(eq(schema.candidateNotes.id, id));
   }
 
-  async getCandidateRatings(jobSeekerId: string, employerId?: string): Promise<schema.CandidateRating[]> {
+  async getCandidateRatings(jobSeekerId?: string, employerId?: string): Promise<schema.CandidateRating[]> {
     const { and } = await import("drizzle-orm");
-    if (employerId) {
-      return db.select().from(schema.candidateRatings).where(and(
-        eq(schema.candidateRatings.jobSeekerId, jobSeekerId),
-        eq(schema.candidateRatings.employerId, employerId)
-      ));
+    const conditions = [];
+    if (jobSeekerId) {
+      conditions.push(eq(schema.candidateRatings.jobSeekerId, jobSeekerId));
     }
-    return db.select().from(schema.candidateRatings).where(eq(schema.candidateRatings.jobSeekerId, jobSeekerId));
+    if (employerId) {
+      conditions.push(eq(schema.candidateRatings.employerId, employerId));
+    }
+    if (conditions.length > 0) {
+      return db.select().from(schema.candidateRatings).where(and(...conditions));
+    }
+    return db.select().from(schema.candidateRatings);
   }
 
   async createCandidateRating(rating: schema.InsertCandidateRating): Promise<schema.CandidateRating> {

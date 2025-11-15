@@ -58,6 +58,7 @@ export function setupOAuth(app: Express) {
           clientID: process.env.GITHUB_CLIENT_ID,
           clientSecret: process.env.GITHUB_CLIENT_SECRET,
           callbackURL: `${process.env.REPL_URL || "http://localhost:5000"}/api/auth/github/callback`,
+          scope: ['user:email', 'read:user', 'public_repo'],
         },
         async (accessToken: string, refreshToken: string, profile: any, done: any) => {
           try {
@@ -86,7 +87,8 @@ export function setupOAuth(app: Express) {
               });
             }
 
-            return done(null, user);
+            const userWithToken = { ...user, githubAccessToken: accessToken };
+            return done(null, userWithToken);
           } catch (error) {
             console.error("GitHub OAuth error:", error);
             return done(error as Error, undefined);
@@ -124,13 +126,18 @@ export function setupOAuth(app: Express) {
   );
 
   app.get("/api/auth/github", passport.authenticate("github", {
-    scope: ["user:email"],
+    scope: ["user:email", "read:user", "public_repo"],
   }));
 
   app.get("/api/auth/github/callback",
     passport.authenticate("github", {
       failureRedirect: "/login?error=oauth_failed",
-      successRedirect: "/?oauth=success",
-    })
+    }),
+    (req: any, res) => {
+      if (req.user && req.user.githubAccessToken) {
+        req.session.githubAccessToken = req.user.githubAccessToken;
+      }
+      res.redirect("/?oauth=success");
+    }
   );
 }

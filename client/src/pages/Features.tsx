@@ -83,30 +83,28 @@ export default function Features() {
       <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex items-center justify-between h-16">
-            <Link href="/">
-              <a className="flex items-center gap-2" data-testid="link-home">
-                <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-bold">
-                  S
-                </div>
-                <span className="font-display font-semibold text-lg">SkillSync AI</span>
-              </a>
+            <Link href="/" className="flex items-center gap-2" data-testid="link-home">
+              <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-bold">
+                S
+              </div>
+              <span className="font-display font-semibold text-lg">SkillSync AI</span>
             </Link>
 
             <div className="hidden md:flex items-center gap-6">
-              <Link href="/features">
-                <a className="text-sm font-medium" data-testid="link-features">Features</a>
+              <Link href="/features" className="text-sm font-medium" data-testid="link-features">
+                Features
               </Link>
-              <Link href="/pricing">
-                <a className="text-sm font-medium" data-testid="link-pricing">Pricing</a>
+              <Link href="/pricing" className="text-sm font-medium" data-testid="link-pricing">
+                Pricing
               </Link>
-              <Link href="/resources">
-                <a className="text-sm font-medium" data-testid="link-resources">Resources</a>
+              <Link href="/resources" className="text-sm font-medium" data-testid="link-resources">
+                Resources
               </Link>
-              <Link href="/about">
-                <a className="text-sm font-medium" data-testid="link-about">About</a>
+              <Link href="/about" className="text-sm font-medium" data-testid="link-about">
+                About
               </Link>
-              <Link href="/contact">
-                <a className="text-sm font-medium" data-testid="link-contact">Contact</a>
+              <Link href="/contact" className="text-sm font-medium" data-testid="link-contact">
+                Contact
               </Link>
             </div>
 
