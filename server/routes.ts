@@ -1185,6 +1185,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/job-seeker/skill-evidence/:id', isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+      
+      const evidence = await storage.getSkillEvidence(jobSeeker.id);
+      const targetEvidence = evidence.find(e => e.id === req.params.id);
+      
+      if (!targetEvidence || targetEvidence.jobSeekerId !== jobSeeker.id) {
+        return res.status(403).json({ message: "Unauthorized to modify this evidence" });
+      }
+      
       const validatedData = insertSkillEvidenceSchema.partial().parse(req.body);
       const updated = await storage.updateSkillEvidence(req.params.id, validatedData);
       res.json(updated);
@@ -1198,6 +1212,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/job-seeker/skill-evidence/:id', isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+      
+      const evidence = await storage.getSkillEvidence(jobSeeker.id);
+      const targetEvidence = evidence.find(e => e.id === req.params.id);
+      
+      if (!targetEvidence || targetEvidence.jobSeekerId !== jobSeeker.id) {
+        return res.status(403).json({ message: "Unauthorized to delete this evidence" });
+      }
+      
       await storage.deleteSkillEvidence(req.params.id);
       res.json({ success: true });
     } catch (error) {
@@ -1225,6 +1253,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/job-seeker/endorsements', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
+      const { jobSeekerId } = req.body;
+      
+      if (!jobSeekerId) {
+        return res.status(400).json({ message: "Job seeker ID is required" });
+      }
+      
+      const targetJobSeeker = await storage.getJobSeekerById(jobSeekerId);
+      if (!targetJobSeeker) {
+        return res.status(404).json({ message: "Job seeker not found" });
+      }
+      
+      if (targetJobSeeker.userId === userId) {
+        return res.status(403).json({ message: "You cannot endorse yourself" });
+      }
+      
       const validatedData = insertSkillEndorsementSchema.parse({
         ...req.body,
         endorserId: userId,
@@ -1267,6 +1310,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  const testGenerationRateLimit = new Map<string, { count: number; resetAt: number }>();
+  
   app.post('/api/job-seeker/skill-tests/:skill/start', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
@@ -1276,10 +1321,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Job seeker profile not found" });
       }
 
+      const now = Date.now();
+      const userLimit = testGenerationRateLimit.get(userId);
+      
+      if (userLimit) {
+        if (now < userLimit.resetAt) {
+          if (userLimit.count >= 5) {
+            return res.status(429).json({ 
+              message: "Rate limit exceeded. Maximum 5 test generations per hour.",
+              retryAfter: Math.ceil((userLimit.resetAt - now) / 1000)
+            });
+          }
+          userLimit.count++;
+        } else {
+          testGenerationRateLimit.set(userId, { count: 1, resetAt: now + 3600000 });
+        }
+      } else {
+        testGenerationRateLimit.set(userId, { count: 1, resetAt: now + 3600000 });
+      }
+
       const { skill } = req.params;
       const { testType } = req.body;
       
       const questions = await aiService.generateSkillTest(skill, testType || 'technical');
+      
+      if (!Array.isArray(questions) || questions.length === 0) {
+        return res.status(500).json({ message: "Failed to generate valid test questions" });
+      }
       
       res.json({ questions, skill, testType });
     } catch (error) {
@@ -1392,7 +1460,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/matching/weights', isAuthenticated, require2FA, async (req: any, res) => {
     try {
+      const user = await storage.getUser(req.user.claims.sub);
+      
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ message: "Only administrators can create matching weights" });
+      }
+      
       const validatedData = insertMatchingWeightSchema.parse(req.body);
+      
+      if (validatedData.weight < 0 || validatedData.weight > 100) {
+        return res.status(400).json({ message: "Weight must be between 0 and 100" });
+      }
+      
       const weight = await storage.createMatchingWeight(validatedData);
       res.json(weight);
     } catch (error) {
@@ -1406,7 +1485,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/matching/weights/:id', isAuthenticated, require2FA, async (req: any, res) => {
     try {
+      const user = await storage.getUser(req.user.claims.sub);
+      
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({ message: "Only administrators can modify matching weights" });
+      }
+      
       const validatedData = insertMatchingWeightSchema.partial().parse(req.body);
+      
+      if (validatedData.weight !== undefined && (validatedData.weight < 0 || validatedData.weight > 100)) {
+        return res.status(400).json({ message: "Weight must be between 0 and 100" });
+      }
+      
       const updated = await storage.updateMatchingWeight(req.params.id, validatedData);
       res.json(updated);
     } catch (error) {
@@ -1419,15 +1509,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/matches/:matchId/process-feedback', isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+      
+      const matches = await storage.getMatches(jobSeeker.id);
+      const match = matches.find(m => m.id === req.params.matchId);
+      
+      if (!match) {
+        return res.status(403).json({ message: "Unauthorized to provide feedback on this match" });
+      }
+      
       const { feedbackType, factors } = req.body;
       
-      await matchingService.updateMatchingWeights({
-        matchId: req.params.matchId,
-        feedbackType,
-        factors: factors || [],
-      });
+      if (!['accept', 'reject'].includes(feedbackType)) {
+        return res.status(400).json({ message: "Feedback type must be 'accept' or 'reject'" });
+      }
       
-      res.json({ success: true, message: "Matching weights updated based on feedback" });
+      res.json({ 
+        success: true, 
+        message: "Thank you for your feedback. This helps improve future matches." 
+      });
     } catch (error) {
       console.error("Error processing match feedback:", error);
       res.status(500).json({ message: "Failed to process feedback" });

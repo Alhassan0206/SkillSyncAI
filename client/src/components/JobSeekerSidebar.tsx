@@ -8,7 +8,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Home, User, Briefcase, Target, BookOpen, Settings, FileText } from "lucide-react";
+import { Home, User, Briefcase, Target, BookOpen, Settings, FileText, Award, TestTube } from "lucide-react";
 import { useLocation, Link } from "wouter";
 
 export default function JobSeekerSidebar() {
@@ -17,6 +17,8 @@ export default function JobSeekerSidebar() {
   const menuItems = [
     { title: "Overview", icon: Home, url: "/dashboard" },
     { title: "Profile", icon: User, url: "/dashboard/profile" },
+    { title: "Skill Passport", icon: Award, url: "/dashboard/skill-passport" },
+    { title: "Skill Test", icon: TestTube, url: "/dashboard/skill-test" },
     { title: "Job Matches", icon: Target, url: "/dashboard/matches" },
     { title: "Applications", icon: FileText, url: "/dashboard/applications" },
     { title: "Learning Plan", icon: BookOpen, url: "/dashboard/learning" },
