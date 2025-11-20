@@ -48,7 +48,7 @@ function Router() {
     );
   }
 
-  if (!user?.role || user.role === 'job_seeker' && !user.jobSeeker) {
+  if (!user?.role || (user.role === 'job_seeker' && !user.jobSeeker) || (user.role === 'employer' && !user.employer)) {
     return <RoleSelection />;
   }
 

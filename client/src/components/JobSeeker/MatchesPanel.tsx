@@ -6,10 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Sparkles, Target, CheckCircle, XCircle, MapPin, DollarSign, Loader2 } from "lucide-react";
+import { Sparkles, Target, CheckCircle, XCircle, MapPin, DollarSign, Loader2, Eye } from "lucide-react";
+import JobDetailsDialog from "../JobDetailsDialog";
 
 export default function MatchesPanel() {
   const [isFinding, setIsFinding] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<any>(null);
+  const [selectedMatch, setSelectedMatch] = useState<any>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -175,16 +178,47 @@ export default function MatchesPanel() {
                       </div>
                     )}
 
-                    {job && (
-                      <div className="flex gap-2 pt-4">
-                        <Button className="flex-1" data-testid={`button-apply-match-${match.id}`}>
-                          Apply Now
-                        </Button>
-                        <Button variant="outline" data-testid={`button-view-job-${match.id}`}>
-                          View Job
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex gap-2 pt-4">
+                      <Button 
+                        variant="outline"
+                        onClick={() => {
+                          if (job) {
+                            setSelectedJob(job);
+                            setSelectedMatch(match);
+                          } else {
+                            toast({
+                              title: "Job not found",
+                              description: "This job is no longer available",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
+                        disabled={!job}
+                        data-testid={`button-view-job-${match.id}`}
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        View Details
+                      </Button>
+                      <Button 
+                        className="flex-1"
+                        onClick={() => {
+                          if (job) {
+                            setSelectedJob(job);
+                            setSelectedMatch(match);
+                          } else {
+                            toast({
+                              title: "Job not found",
+                              description: "This job is no longer available",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
+                        disabled={!job}
+                        data-testid={`button-apply-match-${match.id}`}
+                      >
+                        Apply Now
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -209,6 +243,23 @@ export default function MatchesPanel() {
           </Card>
         )}
       </div>
+
+      {selectedJob && selectedMatch && (
+        <JobDetailsDialog
+          open={!!selectedJob}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedJob(null);
+              setSelectedMatch(null);
+            }
+          }}
+          job={selectedJob}
+          matchScore={selectedMatch.matchScore}
+          matchExplanation={selectedMatch.explanation}
+          matchingSkills={selectedMatch.matchingSkills}
+          gapSkills={selectedMatch.gapSkills}
+        />
+      )}
     </div>
   );
 }

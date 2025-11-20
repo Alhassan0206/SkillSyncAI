@@ -14,12 +14,7 @@ export default function RoleSelection() {
 
   const setRoleMutation = useMutation({
     mutationFn: async (role: string) => {
-      const response = await fetch('/api/profile/role', {
-        method: 'POST',
-        body: JSON.stringify({ role }),
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!response.ok) throw new Error('Failed to set role');
+      const response = await apiRequest('POST', '/api/profile/role', { role });
       return response.json();
     },
     onSuccess: () => {

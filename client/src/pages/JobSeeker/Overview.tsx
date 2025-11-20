@@ -139,6 +139,7 @@ export default function JobSeekerOverview() {
                           matchingSkills={match.matchingSkills || []}
                           gapSkills={match.gapSkills || []}
                           matchExplanation={match.explanation || ""}
+                          job={job}
                         />
                       );
                     })}

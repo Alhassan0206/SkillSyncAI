@@ -1,8 +1,9 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Briefcase, DollarSign, BookmarkPlus } from "lucide-react";
+import { MapPin, Briefcase, DollarSign, BookmarkPlus, Eye } from "lucide-react";
 import { useState } from "react";
+import JobDetailsDialog from "./JobDetailsDialog";
 
 interface JobMatchCardProps {
   id: string;
@@ -16,9 +17,11 @@ interface JobMatchCardProps {
   gapSkills: string[];
   matchExplanation: string;
   companyLogo?: string;
+  job?: any;
 }
 
 export default function JobMatchCard({
+  id,
   companyName,
   jobTitle,
   location,
@@ -29,8 +32,10 @@ export default function JobMatchCard({
   gapSkills,
   matchExplanation,
   companyLogo,
+  job,
 }: JobMatchCardProps) {
   const [bookmarked, setBookmarked] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
   const getScoreColor = (score: number) => {
     if (score >= 90) return "text-success";
@@ -111,7 +116,22 @@ export default function JobMatchCard({
       )}
 
       <div className="flex gap-2">
-        <Button variant="default" className="flex-1" data-testid="button-apply">
+        <Button 
+          variant="outline" 
+          onClick={() => job && setShowDetails(true)}
+          disabled={!job}
+          data-testid={`button-view-job-${id}`}
+        >
+          <Eye className="w-4 h-4 mr-2" />
+          View Details
+        </Button>
+        <Button 
+          variant="default" 
+          className="flex-1" 
+          onClick={() => job && setShowDetails(true)}
+          disabled={!job}
+          data-testid="button-apply"
+        >
           Apply Now
         </Button>
         <Button 
@@ -124,6 +144,18 @@ export default function JobMatchCard({
           <BookmarkPlus className={`w-5 h-5 ${bookmarked ? 'fill-primary text-primary' : ''}`} />
         </Button>
       </div>
+
+      {job && (
+        <JobDetailsDialog
+          open={showDetails}
+          onOpenChange={setShowDetails}
+          job={job}
+          matchScore={matchScore}
+          matchExplanation={matchExplanation}
+          matchingSkills={matchingSkills}
+          gapSkills={gapSkills}
+        />
+      )}
     </Card>
   );
 }
