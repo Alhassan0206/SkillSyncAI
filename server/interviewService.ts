@@ -127,13 +127,11 @@ export class InterviewService {
       comments?: string;
       strengths?: string;
       concerns?: string;
-    },
-    rating?: number
+    }
   ): Promise<Interview> {
     const updated = await this.storage.updateInterview(interviewId, {
       status: "completed",
       feedback: feedbackData || undefined,
-      rating,
     });
 
     return updated;
@@ -180,12 +178,15 @@ export class InterviewService {
       return undefined;
     }
 
+    const jobSeekerName = `${jobSeeker.firstName || ""} ${jobSeeker.lastName || ""}`.trim() || "Candidate";
+    const attendees = [jobSeeker.email, interviewer.email].filter((email): email is string => email !== null);
+    
     const event: CalendarEvent = {
-      title: `Interview: ${jobSeeker.firstName || ""} ${jobSeeker.lastName || ""}`,
+      title: `Interview: ${jobSeekerName}`,
       description: `Interview for application\nType: ${interview.interviewType}\n${interview.notes || ""}`,
       startTime: new Date(interview.scheduledAt),
       endTime: new Date(new Date(interview.scheduledAt).getTime() + interview.duration * 60000),
-      attendees: [jobSeeker.email, interviewer.email],
+      attendees,
       location: interview.location || undefined,
       meetingUrl: interview.meetingUrl || undefined,
     };

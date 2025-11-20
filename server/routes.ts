@@ -4,7 +4,10 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { aiService } from "./aiService";
 import { matchingService } from "./matchingService";
-import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema, insertMatchSchema, insertLearningPlanSchema, insertTeamInvitationSchema, insertPasswordResetTokenSchema, insertCandidateTagSchema, insertCandidateNoteSchema, insertCandidateRatingSchema, insertGithubRepoSchema, insertResumeParseQueueSchema, insertSkillEvidenceSchema, insertSkillEndorsementSchema, insertSkillTestSchema, insertAchievementSchema, insertMatchFeedbackSchema, insertMatchingWeightSchema } from "@shared/schema";
+import { PipelineService } from "./pipelineService";
+import { InterviewService } from "./interviewService";
+import { NotificationService } from "./notificationService";
+import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema, insertMatchSchema, insertLearningPlanSchema, insertTeamInvitationSchema, insertPasswordResetTokenSchema, insertCandidateTagSchema, insertCandidateNoteSchema, insertCandidateRatingSchema, insertGithubRepoSchema, insertResumeParseQueueSchema, insertSkillEvidenceSchema, insertSkillEndorsementSchema, insertSkillTestSchema, insertAchievementSchema, insertMatchFeedbackSchema, insertMatchingWeightSchema, insertInterviewSchema, insertNotificationSchema, insertIntegrationConfigSchema } from "@shared/schema";
 import Stripe from "stripe";
 import { randomBytes, createHash } from "crypto";
 import { authEnhancements, require2FA } from "./authEnhancements";
@@ -2054,6 +2057,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error revoking invitation:", error);
       res.status(500).json({ message: "Failed to revoke invitation" });
+    }
+  });
+
+  app.get('/api/notifications', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const unreadOnly = req.query.unreadOnly === 'true';
+      const notifications = await storage.getNotifications(userId, unreadOnly);
+      res.json(notifications);
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  app.post('/api/notifications/:id/read', isAuthenticated, async (req: any, res) => {
+    try {
+      const notificationId = req.params.id;
+      await storage.markNotificationAsRead(notificationId);
+      res.json({ message: "Notification marked as read" });
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      res.status(500).json({ message: "Failed to mark notification as read" });
+    }
+  });
+
+  app.post('/api/notifications/read-all', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      await storage.markAllNotificationsAsRead(userId);
+      res.json({ message: "All notifications marked as read" });
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error);
+      res.status(500).json({ message: "Failed to mark all notifications as read" });
+    }
+  });
+
+  app.get('/api/interviews', isAuthenticated, async (req: any, res) => {
+    try {
+      const applicationId = req.query.applicationId as string | undefined;
+      const interviews = await storage.getInterviews(applicationId);
+      res.json(interviews);
+    } catch (error) {
+      console.error("Error fetching interviews:", error);
+      res.status(500).json({ message: "Failed to fetch interviews" });
+    }
+  });
+
+  app.get('/api/interviews/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const interviewId = req.params.id;
+      const interview = await storage.getInterviewById(interviewId);
+      
+      if (!interview) {
+        return res.status(404).json({ message: "Interview not found" });
+      }
+      
+      res.json(interview);
+    } catch (error) {
+      console.error("Error fetching interview:", error);
+      res.status(500).json({ message: "Failed to fetch interview" });
+    }
+  });
+
+  app.get('/api/integrations', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.tenantId) {
+        return res.status(403).json({ message: "Forbidden - no tenant" });
+      }
+
+      const integrationType = req.query.type as string | undefined;
+      const configs = await storage.getIntegrationConfigs(user.tenantId, integrationType);
+      res.json(configs);
+    } catch (error) {
+      console.error("Error fetching integrations:", error);
+      res.status(500).json({ message: "Failed to fetch integrations" });
     }
   });
 
