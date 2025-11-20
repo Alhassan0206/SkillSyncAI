@@ -82,6 +82,34 @@ export interface IStorage {
   getResumeParseQueue(jobSeekerId?: string): Promise<schema.ResumeParseQueue[]>;
   createResumeParseQueueItem(item: schema.InsertResumeParseQueue): Promise<schema.ResumeParseQueue>;
   updateResumeParseQueueItem(id: string, data: Partial<schema.InsertResumeParseQueue>): Promise<schema.ResumeParseQueue>;
+
+  getSkillEvidence(jobSeekerId: string, skill?: string): Promise<schema.SkillEvidence[]>;
+  createSkillEvidence(evidence: schema.InsertSkillEvidence): Promise<schema.SkillEvidence>;
+  updateSkillEvidence(id: string, data: Partial<schema.InsertSkillEvidence>): Promise<schema.SkillEvidence>;
+  deleteSkillEvidence(id: string): Promise<void>;
+
+  getSkillEndorsements(jobSeekerId: string, skill?: string): Promise<schema.SkillEndorsement[]>;
+  createSkillEndorsement(endorsement: schema.InsertSkillEndorsement): Promise<schema.SkillEndorsement>;
+  deleteSkillEndorsement(id: string): Promise<void>;
+
+  getSkillTests(jobSeekerId: string, skill?: string): Promise<schema.SkillTest[]>;
+  createSkillTest(test: schema.InsertSkillTest): Promise<schema.SkillTest>;
+  getSkillTestById(id: string): Promise<schema.SkillTest | undefined>;
+
+  getAchievements(jobSeekerId: string): Promise<schema.Achievement[]>;
+  createAchievement(achievement: schema.InsertAchievement): Promise<schema.Achievement>;
+  deleteAchievement(id: string): Promise<void>;
+
+  getMatchFeedback(matchId: string): Promise<schema.MatchFeedback[]>;
+  createMatchFeedback(feedback: schema.InsertMatchFeedback): Promise<schema.MatchFeedback>;
+
+  getSkillEmbedding(entityType: string, entityId: string): Promise<schema.SkillEmbedding | undefined>;
+  createSkillEmbedding(embedding: schema.InsertSkillEmbedding): Promise<schema.SkillEmbedding>;
+  updateSkillEmbedding(id: string, data: Partial<schema.InsertSkillEmbedding>): Promise<schema.SkillEmbedding>;
+
+  getMatchingWeights(weightType?: string): Promise<schema.MatchingWeight[]>;
+  createMatchingWeight(weight: schema.InsertMatchingWeight): Promise<schema.MatchingWeight>;
+  updateMatchingWeight(id: string, data: Partial<schema.InsertMatchingWeight>): Promise<schema.MatchingWeight>;
 }
 
 export class DbStorage implements IStorage {
@@ -514,6 +542,139 @@ export class DbStorage implements IStorage {
     const [updated] = await db.update(schema.resumeParseQueue)
       .set(data as any)
       .where(eq(schema.resumeParseQueue.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getSkillEvidence(jobSeekerId: string, skill?: string): Promise<schema.SkillEvidence[]> {
+    const { and } = await import("drizzle-orm");
+    if (skill) {
+      return db.select().from(schema.skillEvidence).where(and(
+        eq(schema.skillEvidence.jobSeekerId, jobSeekerId),
+        eq(schema.skillEvidence.skill, skill)
+      ));
+    }
+    return db.select().from(schema.skillEvidence).where(eq(schema.skillEvidence.jobSeekerId, jobSeekerId));
+  }
+
+  async createSkillEvidence(evidence: schema.InsertSkillEvidence): Promise<schema.SkillEvidence> {
+    const [created] = await db.insert(schema.skillEvidence).values(evidence as any).returning();
+    return created;
+  }
+
+  async updateSkillEvidence(id: string, data: Partial<schema.InsertSkillEvidence>): Promise<schema.SkillEvidence> {
+    const [updated] = await db.update(schema.skillEvidence)
+      .set({ ...data, updatedAt: new Date() } as any)
+      .where(eq(schema.skillEvidence.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSkillEvidence(id: string): Promise<void> {
+    await db.delete(schema.skillEvidence).where(eq(schema.skillEvidence.id, id));
+  }
+
+  async getSkillEndorsements(jobSeekerId: string, skill?: string): Promise<schema.SkillEndorsement[]> {
+    const { and } = await import("drizzle-orm");
+    if (skill) {
+      return db.select().from(schema.skillEndorsements).where(and(
+        eq(schema.skillEndorsements.jobSeekerId, jobSeekerId),
+        eq(schema.skillEndorsements.skill, skill)
+      ));
+    }
+    return db.select().from(schema.skillEndorsements).where(eq(schema.skillEndorsements.jobSeekerId, jobSeekerId));
+  }
+
+  async createSkillEndorsement(endorsement: schema.InsertSkillEndorsement): Promise<schema.SkillEndorsement> {
+    const [created] = await db.insert(schema.skillEndorsements).values(endorsement).returning();
+    return created;
+  }
+
+  async deleteSkillEndorsement(id: string): Promise<void> {
+    await db.delete(schema.skillEndorsements).where(eq(schema.skillEndorsements.id, id));
+  }
+
+  async getSkillTests(jobSeekerId: string, skill?: string): Promise<schema.SkillTest[]> {
+    const { and } = await import("drizzle-orm");
+    if (skill) {
+      return db.select().from(schema.skillTests).where(and(
+        eq(schema.skillTests.jobSeekerId, jobSeekerId),
+        eq(schema.skillTests.skill, skill)
+      ));
+    }
+    return db.select().from(schema.skillTests).where(eq(schema.skillTests.jobSeekerId, jobSeekerId));
+  }
+
+  async createSkillTest(test: schema.InsertSkillTest): Promise<schema.SkillTest> {
+    const [created] = await db.insert(schema.skillTests).values(test as any).returning();
+    return created;
+  }
+
+  async getSkillTestById(id: string): Promise<schema.SkillTest | undefined> {
+    const [test] = await db.select().from(schema.skillTests).where(eq(schema.skillTests.id, id));
+    return test;
+  }
+
+  async getAchievements(jobSeekerId: string): Promise<schema.Achievement[]> {
+    return db.select().from(schema.achievements).where(eq(schema.achievements.jobSeekerId, jobSeekerId));
+  }
+
+  async createAchievement(achievement: schema.InsertAchievement): Promise<schema.Achievement> {
+    const [created] = await db.insert(schema.achievements).values(achievement as any).returning();
+    return created;
+  }
+
+  async deleteAchievement(id: string): Promise<void> {
+    await db.delete(schema.achievements).where(eq(schema.achievements.id, id));
+  }
+
+  async getMatchFeedback(matchId: string): Promise<schema.MatchFeedback[]> {
+    return db.select().from(schema.matchFeedback).where(eq(schema.matchFeedback.matchId, matchId));
+  }
+
+  async createMatchFeedback(feedback: schema.InsertMatchFeedback): Promise<schema.MatchFeedback> {
+    const [created] = await db.insert(schema.matchFeedback).values(feedback).returning();
+    return created;
+  }
+
+  async getSkillEmbedding(entityType: string, entityId: string): Promise<schema.SkillEmbedding | undefined> {
+    const { and } = await import("drizzle-orm");
+    const [embedding] = await db.select().from(schema.skillEmbeddings).where(and(
+      eq(schema.skillEmbeddings.entityType, entityType),
+      eq(schema.skillEmbeddings.entityId, entityId)
+    ));
+    return embedding;
+  }
+
+  async createSkillEmbedding(embedding: schema.InsertSkillEmbedding): Promise<schema.SkillEmbedding> {
+    const [created] = await db.insert(schema.skillEmbeddings).values(embedding).returning();
+    return created;
+  }
+
+  async updateSkillEmbedding(id: string, data: Partial<schema.InsertSkillEmbedding>): Promise<schema.SkillEmbedding> {
+    const [updated] = await db.update(schema.skillEmbeddings)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.skillEmbeddings.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getMatchingWeights(weightType?: string): Promise<schema.MatchingWeight[]> {
+    if (weightType) {
+      return db.select().from(schema.matchingWeights).where(eq(schema.matchingWeights.weightType, weightType));
+    }
+    return db.select().from(schema.matchingWeights);
+  }
+
+  async createMatchingWeight(weight: schema.InsertMatchingWeight): Promise<schema.MatchingWeight> {
+    const [created] = await db.insert(schema.matchingWeights).values(weight).returning();
+    return created;
+  }
+
+  async updateMatchingWeight(id: string, data: Partial<schema.InsertMatchingWeight>): Promise<schema.MatchingWeight> {
+    const [updated] = await db.update(schema.matchingWeights)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.matchingWeights.id, id))
       .returning();
     return updated;
   }

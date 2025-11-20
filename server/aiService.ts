@@ -353,6 +353,56 @@ Respond in JSON format:
       throw new Error("Failed to parse resume");
     }
   }
+
+  async generateSkillTest(skill: string, testType: string): Promise<Array<{
+    question: string;
+    options: string[];
+    correctAnswer: string;
+    difficulty: string;
+  }>> {
+    const prompt = `Generate a ${testType} skill assessment test for "${skill}".
+
+Create 10 questions that test practical knowledge and understanding of ${skill}.
+Questions should be:
+- Realistic and job-relevant
+- Mix of difficulty levels (easy, medium, hard)
+- Testing both theoretical knowledge and practical application
+
+Respond in JSON format:
+{
+  "questions": [
+    {
+      "question": <question text>,
+      "options": [<option 1>, <option 2>, <option 3>, <option 4>],
+      "correctAnswer": <the correct option exactly as written>,
+      "difficulty": <"easy"|"medium"|"hard">
+    }
+  ]
+}`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert technical interviewer creating fair, accurate, and insightful skill assessments.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || "{}");
+      return result.questions || [];
+    } catch (error) {
+      console.error("Skill test generation error:", error);
+      throw new Error("Failed to generate skill test");
+    }
+  }
 }
 
 export const aiService = new AIService();

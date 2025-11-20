@@ -229,6 +229,106 @@ export const resumeParseQueue = pgTable("resume_parse_queue", {
   processedAt: timestamp("processed_at"),
 });
 
+export const skillEvidence = pgTable("skill_evidence", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobSeekerId: varchar("job_seeker_id").notNull().references(() => jobSeekers.id),
+  skill: text("skill").notNull(),
+  evidenceType: text("evidence_type").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  url: text("url"),
+  fileUrl: text("file_url"),
+  metadata: jsonb("metadata").$type<{
+    projectDuration?: string;
+    role?: string;
+    technologies?: string[];
+    metrics?: string;
+  }>(),
+  verificationStatus: text("verification_status").default("pending"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const skillEndorsements = pgTable("skill_endorsements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobSeekerId: varchar("job_seeker_id").notNull().references(() => jobSeekers.id),
+  endorserId: varchar("endorser_id").notNull().references(() => users.id),
+  skill: text("skill").notNull(),
+  relationship: text("relationship").notNull(),
+  comment: text("comment"),
+  rating: integer("rating").notNull(),
+  verified: boolean("verified").default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const skillTests = pgTable("skill_tests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobSeekerId: varchar("job_seeker_id").notNull().references(() => jobSeekers.id),
+  skill: text("skill").notNull(),
+  testType: text("test_type").notNull(),
+  score: integer("score").notNull(),
+  maxScore: integer("max_score").notNull(),
+  percentile: integer("percentile"),
+  duration: integer("duration"),
+  questions: jsonb("questions").$type<Array<{
+    question: string;
+    userAnswer?: string;
+    correctAnswer: string;
+    isCorrect: boolean;
+  }>>(),
+  certificateUrl: text("certificate_url"),
+  expiresAt: timestamp("expires_at"),
+  completedAt: timestamp("completed_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const achievements = pgTable("achievements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobSeekerId: varchar("job_seeker_id").notNull().references(() => jobSeekers.id),
+  badgeType: text("badge_type").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  iconUrl: text("icon_url"),
+  criteria: jsonb("criteria").$type<{
+    type: string;
+    value: any;
+    threshold?: number;
+  }>(),
+  awardedAt: timestamp("awarded_at").notNull().defaultNow(),
+  displayOrder: integer("display_order").default(0),
+});
+
+export const matchFeedback = pgTable("match_feedback", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  matchId: varchar("match_id").notNull().references(() => matches.id),
+  feedbackType: text("feedback_type").notNull(),
+  rating: integer("rating"),
+  isRelevant: boolean("is_relevant"),
+  comment: text("comment"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const skillEmbeddings = pgTable("skill_embeddings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityType: text("entity_type").notNull(),
+  entityId: varchar("entity_id").notNull(),
+  skillText: text("skill_text").notNull(),
+  embedding: text("embedding").notNull(),
+  model: text("model").notNull().default("text-embedding-3-small"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const matchingWeights = pgTable("matching_weights", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  weightType: text("weight_type").notNull(),
+  factor: text("factor").notNull(),
+  weight: integer("weight").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").default(true),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const insertTenantSchema = createInsertSchema(tenants).omit({ id: true, createdAt: true });
 export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true, updatedAt: true });
 export const upsertUserSchema = createInsertSchema(users).omit({ createdAt: true, updatedAt: true });
@@ -245,6 +345,13 @@ export const insertCandidateNoteSchema = createInsertSchema(candidateNotes).omit
 export const insertCandidateRatingSchema = createInsertSchema(candidateRatings).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertGithubRepoSchema = createInsertSchema(githubRepos).omit({ id: true, createdAt: true });
 export const insertResumeParseQueueSchema = createInsertSchema(resumeParseQueue).omit({ id: true, createdAt: true, processedAt: true });
+export const insertSkillEvidenceSchema = createInsertSchema(skillEvidence).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSkillEndorsementSchema = createInsertSchema(skillEndorsements).omit({ id: true, createdAt: true });
+export const insertSkillTestSchema = createInsertSchema(skillTests).omit({ id: true, createdAt: true, completedAt: true });
+export const insertAchievementSchema = createInsertSchema(achievements).omit({ id: true, awardedAt: true });
+export const insertMatchFeedbackSchema = createInsertSchema(matchFeedback).omit({ id: true, createdAt: true });
+export const insertSkillEmbeddingSchema = createInsertSchema(skillEmbeddings).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertMatchingWeightSchema = createInsertSchema(matchingWeights).omit({ id: true, updatedAt: true });
 
 export type Tenant = typeof tenants.$inferSelect;
 export type InsertTenant = z.infer<typeof insertTenantSchema>;
@@ -291,3 +398,24 @@ export type InsertGithubRepo = z.infer<typeof insertGithubRepoSchema>;
 
 export type ResumeParseQueue = typeof resumeParseQueue.$inferSelect;
 export type InsertResumeParseQueue = z.infer<typeof insertResumeParseQueueSchema>;
+
+export type SkillEvidence = typeof skillEvidence.$inferSelect;
+export type InsertSkillEvidence = z.infer<typeof insertSkillEvidenceSchema>;
+
+export type SkillEndorsement = typeof skillEndorsements.$inferSelect;
+export type InsertSkillEndorsement = z.infer<typeof insertSkillEndorsementSchema>;
+
+export type SkillTest = typeof skillTests.$inferSelect;
+export type InsertSkillTest = z.infer<typeof insertSkillTestSchema>;
+
+export type Achievement = typeof achievements.$inferSelect;
+export type InsertAchievement = z.infer<typeof insertAchievementSchema>;
+
+export type MatchFeedback = typeof matchFeedback.$inferSelect;
+export type InsertMatchFeedback = z.infer<typeof insertMatchFeedbackSchema>;
+
+export type SkillEmbedding = typeof skillEmbeddings.$inferSelect;
+export type InsertSkillEmbedding = z.infer<typeof insertSkillEmbeddingSchema>;
+
+export type MatchingWeight = typeof matchingWeights.$inferSelect;
+export type InsertMatchingWeight = z.infer<typeof insertMatchingWeightSchema>;

@@ -3,7 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { aiService } from "./aiService";
-import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema, insertMatchSchema, insertLearningPlanSchema, insertTeamInvitationSchema, insertPasswordResetTokenSchema, insertCandidateTagSchema, insertCandidateNoteSchema, insertCandidateRatingSchema, insertGithubRepoSchema, insertResumeParseQueueSchema } from "@shared/schema";
+import { matchingService } from "./matchingService";
+import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema, insertMatchSchema, insertLearningPlanSchema, insertTeamInvitationSchema, insertPasswordResetTokenSchema, insertCandidateTagSchema, insertCandidateNoteSchema, insertCandidateRatingSchema, insertGithubRepoSchema, insertResumeParseQueueSchema, insertSkillEvidenceSchema, insertSkillEndorsementSchema, insertSkillTestSchema, insertAchievementSchema, insertMatchFeedbackSchema, insertMatchingWeightSchema } from "@shared/schema";
 import Stripe from "stripe";
 import { randomBytes, createHash } from "crypto";
 import { authEnhancements, require2FA } from "./authEnhancements";
@@ -971,11 +972,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Job seeker profile not found" });
       }
 
+      const { useEnhanced } = req.body;
       const jobs = await storage.getJobs();
       const matches = [];
 
       for (const job of jobs.slice(0, 10)) {
-        const matchResult = await aiService.analyzeJobMatch(jobSeeker, job);
+        const matchResult = useEnhanced 
+          ? await matchingService.analyzeEnhancedMatch(jobSeeker, job)
+          : await aiService.analyzeJobMatch(jobSeeker, job);
         
         if (matchResult.matchScore >= 50) {
           const match = await storage.createMatch({
@@ -985,7 +989,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             matchingSkills: matchResult.matchingSkills,
             gapSkills: matchResult.gapSkills,
             explanation: matchResult.explanation,
-            aiMetadata: matchResult.aiMetadata,
+            aiMetadata: matchResult.aiMetadata || {
+              breakdown: (matchResult as any).breakdown,
+              semanticScore: (matchResult as any).semanticScore,
+              keywordScore: (matchResult as any).keywordScore,
+              experienceScore: (matchResult as any).experienceScore,
+            },
           });
           matches.push(match);
         }
@@ -1129,6 +1138,299 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid learning plan data", errors: error });
       }
       res.status(500).json({ message: "Failed to update learning plan" });
+    }
+  });
+
+  app.get('/api/job-seeker/skill-evidence', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      const skill = req.query.skill as string | undefined;
+      const evidence = await storage.getSkillEvidence(jobSeeker.id, skill);
+      res.json(evidence);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch skill evidence" });
+    }
+  });
+
+  app.post('/api/job-seeker/skill-evidence', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      const validatedData = insertSkillEvidenceSchema.parse({
+        ...req.body,
+        jobSeekerId: jobSeeker.id,
+      });
+      
+      const evidence = await storage.createSkillEvidence(validatedData);
+      res.json(evidence);
+    } catch (error) {
+      console.error("Error creating skill evidence:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid evidence data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to create skill evidence" });
+    }
+  });
+
+  app.patch('/api/job-seeker/skill-evidence/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const validatedData = insertSkillEvidenceSchema.partial().parse(req.body);
+      const updated = await storage.updateSkillEvidence(req.params.id, validatedData);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid evidence data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to update skill evidence" });
+    }
+  });
+
+  app.delete('/api/job-seeker/skill-evidence/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      await storage.deleteSkillEvidence(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete skill evidence" });
+    }
+  });
+
+  app.get('/api/job-seeker/endorsements', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      const skill = req.query.skill as string | undefined;
+      const endorsements = await storage.getSkillEndorsements(jobSeeker.id, skill);
+      res.json(endorsements);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch endorsements" });
+    }
+  });
+
+  app.post('/api/job-seeker/endorsements', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const validatedData = insertSkillEndorsementSchema.parse({
+        ...req.body,
+        endorserId: userId,
+      });
+      
+      const endorsement = await storage.createSkillEndorsement(validatedData);
+      res.json(endorsement);
+    } catch (error) {
+      console.error("Error creating endorsement:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid endorsement data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to create endorsement" });
+    }
+  });
+
+  app.delete('/api/job-seeker/endorsements/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      await storage.deleteSkillEndorsement(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete endorsement" });
+    }
+  });
+
+  app.get('/api/job-seeker/skill-tests', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      const skill = req.query.skill as string | undefined;
+      const tests = await storage.getSkillTests(jobSeeker.id, skill);
+      res.json(tests);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch skill tests" });
+    }
+  });
+
+  app.post('/api/job-seeker/skill-tests/:skill/start', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      const { skill } = req.params;
+      const { testType } = req.body;
+      
+      const questions = await aiService.generateSkillTest(skill, testType || 'technical');
+      
+      res.json({ questions, skill, testType });
+    } catch (error) {
+      console.error("Error generating skill test:", error);
+      res.status(500).json({ message: "Failed to generate skill test" });
+    }
+  });
+
+  app.post('/api/job-seeker/skill-tests', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      const validatedData = insertSkillTestSchema.parse({
+        ...req.body,
+        jobSeekerId: jobSeeker.id,
+      });
+      
+      const test = await storage.createSkillTest(validatedData);
+      res.json(test);
+    } catch (error) {
+      console.error("Error saving skill test:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid test data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to save skill test" });
+    }
+  });
+
+  app.get('/api/job-seeker/achievements', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      const achievements = await storage.getAchievements(jobSeeker.id);
+      res.json(achievements);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch achievements" });
+    }
+  });
+
+  app.post('/api/job-seeker/achievements', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      const validatedData = insertAchievementSchema.parse({
+        ...req.body,
+        jobSeekerId: jobSeeker.id,
+      });
+      
+      const achievement = await storage.createAchievement(validatedData);
+      res.json(achievement);
+    } catch (error) {
+      console.error("Error creating achievement:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid achievement data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to create achievement" });
+    }
+  });
+
+  app.post('/api/matches/:matchId/feedback', isAuthenticated, async (req: any, res) => {
+    try {
+      const validatedData = insertMatchFeedbackSchema.parse({
+        ...req.body,
+        matchId: req.params.matchId,
+      });
+      
+      const feedback = await storage.createMatchFeedback(validatedData);
+      res.json(feedback);
+    } catch (error) {
+      console.error("Error creating match feedback:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid feedback data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to save feedback" });
+    }
+  });
+
+  app.get('/api/matches/:matchId/feedback', isAuthenticated, async (req: any, res) => {
+    try {
+      const feedback = await storage.getMatchFeedback(req.params.matchId);
+      res.json(feedback);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch match feedback" });
+    }
+  });
+
+  app.get('/api/matching/weights', isAuthenticated, async (req: any, res) => {
+    try {
+      const weights = await storage.getMatchingWeights();
+      res.json(weights);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch matching weights" });
+    }
+  });
+
+  app.post('/api/matching/weights', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const validatedData = insertMatchingWeightSchema.parse(req.body);
+      const weight = await storage.createMatchingWeight(validatedData);
+      res.json(weight);
+    } catch (error) {
+      console.error("Error creating matching weight:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid weight data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to create matching weight" });
+    }
+  });
+
+  app.patch('/api/matching/weights/:id', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const validatedData = insertMatchingWeightSchema.partial().parse(req.body);
+      const updated = await storage.updateMatchingWeight(req.params.id, validatedData);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid weight data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to update matching weight" });
+    }
+  });
+
+  app.post('/api/matches/:matchId/process-feedback', isAuthenticated, async (req: any, res) => {
+    try {
+      const { feedbackType, factors } = req.body;
+      
+      await matchingService.updateMatchingWeights({
+        matchId: req.params.matchId,
+        feedbackType,
+        factors: factors || [],
+      });
+      
+      res.json({ success: true, message: "Matching weights updated based on feedback" });
+    } catch (error) {
+      console.error("Error processing match feedback:", error);
+      res.status(500).json({ message: "Failed to process feedback" });
     }
   });
 
