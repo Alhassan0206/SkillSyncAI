@@ -110,6 +110,23 @@ export interface IStorage {
   getMatchingWeights(weightType?: string): Promise<schema.MatchingWeight[]>;
   createMatchingWeight(weight: schema.InsertMatchingWeight): Promise<schema.MatchingWeight>;
   updateMatchingWeight(id: string, data: Partial<schema.InsertMatchingWeight>): Promise<schema.MatchingWeight>;
+
+  getInterviews(applicationId?: string): Promise<schema.Interview[]>;
+  getInterviewById(id: string): Promise<schema.Interview | undefined>;
+  createInterview(interview: schema.InsertInterview): Promise<schema.Interview>;
+  updateInterview(id: string, data: Partial<schema.InsertInterview>): Promise<schema.Interview>;
+  deleteInterview(id: string): Promise<void>;
+
+  getNotifications(userId: string, unreadOnly?: boolean): Promise<schema.Notification[]>;
+  createNotification(notification: schema.InsertNotification): Promise<schema.Notification>;
+  markNotificationAsRead(id: string): Promise<void>;
+  markAllNotificationsAsRead(userId: string): Promise<void>;
+
+  getIntegrationConfigs(tenantId: string, integrationType?: string): Promise<schema.IntegrationConfig[]>;
+  getIntegrationConfigById(id: string): Promise<schema.IntegrationConfig | undefined>;
+  createIntegrationConfig(config: schema.InsertIntegrationConfig): Promise<schema.IntegrationConfig>;
+  updateIntegrationConfig(id: string, data: Partial<schema.InsertIntegrationConfig>): Promise<schema.IntegrationConfig>;
+  deleteIntegrationConfig(id: string): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -677,6 +694,96 @@ export class DbStorage implements IStorage {
       .where(eq(schema.matchingWeights.id, id))
       .returning();
     return updated;
+  }
+
+  async getInterviews(applicationId?: string): Promise<schema.Interview[]> {
+    if (applicationId) {
+      return db.select().from(schema.interviews).where(eq(schema.interviews.applicationId, applicationId));
+    }
+    return db.select().from(schema.interviews);
+  }
+
+  async getInterviewById(id: string): Promise<schema.Interview | undefined> {
+    const [interview] = await db.select().from(schema.interviews).where(eq(schema.interviews.id, id));
+    return interview;
+  }
+
+  async createInterview(interview: schema.InsertInterview): Promise<schema.Interview> {
+    const [created] = await db.insert(schema.interviews).values(interview).returning();
+    return created;
+  }
+
+  async updateInterview(id: string, data: Partial<schema.InsertInterview>): Promise<schema.Interview> {
+    const [updated] = await db.update(schema.interviews)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.interviews.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteInterview(id: string): Promise<void> {
+    await db.delete(schema.interviews).where(eq(schema.interviews.id, id));
+  }
+
+  async getNotifications(userId: string, unreadOnly = false): Promise<schema.Notification[]> {
+    const { and } = await import("drizzle-orm");
+    if (unreadOnly) {
+      return db.select().from(schema.notifications).where(and(
+        eq(schema.notifications.userId, userId),
+        eq(schema.notifications.read, false)
+      ));
+    }
+    return db.select().from(schema.notifications).where(eq(schema.notifications.userId, userId));
+  }
+
+  async createNotification(notification: schema.InsertNotification): Promise<schema.Notification> {
+    const [created] = await db.insert(schema.notifications).values(notification).returning();
+    return created;
+  }
+
+  async markNotificationAsRead(id: string): Promise<void> {
+    await db.update(schema.notifications)
+      .set({ read: true })
+      .where(eq(schema.notifications.id, id));
+  }
+
+  async markAllNotificationsAsRead(userId: string): Promise<void> {
+    await db.update(schema.notifications)
+      .set({ read: true })
+      .where(eq(schema.notifications.userId, userId));
+  }
+
+  async getIntegrationConfigs(tenantId: string, integrationType?: string): Promise<schema.IntegrationConfig[]> {
+    const { and } = await import("drizzle-orm");
+    if (integrationType) {
+      return db.select().from(schema.integrationConfigs).where(and(
+        eq(schema.integrationConfigs.tenantId, tenantId),
+        eq(schema.integrationConfigs.integrationType, integrationType)
+      ));
+    }
+    return db.select().from(schema.integrationConfigs).where(eq(schema.integrationConfigs.tenantId, tenantId));
+  }
+
+  async getIntegrationConfigById(id: string): Promise<schema.IntegrationConfig | undefined> {
+    const [config] = await db.select().from(schema.integrationConfigs).where(eq(schema.integrationConfigs.id, id));
+    return config;
+  }
+
+  async createIntegrationConfig(config: schema.InsertIntegrationConfig): Promise<schema.IntegrationConfig> {
+    const [created] = await db.insert(schema.integrationConfigs).values(config).returning();
+    return created;
+  }
+
+  async updateIntegrationConfig(id: string, data: Partial<schema.InsertIntegrationConfig>): Promise<schema.IntegrationConfig> {
+    const [updated] = await db.update(schema.integrationConfigs)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.integrationConfigs.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteIntegrationConfig(id: string): Promise<void> {
+    await db.delete(schema.integrationConfigs).where(eq(schema.integrationConfigs.id, id));
   }
 }
 
