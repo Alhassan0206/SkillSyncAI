@@ -8,26 +8,36 @@ The application provides personalized skill gap analysis, AI-powered job matchin
 
 ## Current Status
 
-**Last Updated:** November 7, 2025
+**Last Updated:** November 20, 2025
 
 **Setup Status:**
 - ✅ PostgreSQL database configured and migrations completed
-- ✅ Replit Auth integration fully functional
-- ✅ OpenAI API integration configured
+- ✅ Replit Auth integration fully functional  
+- ✅ OpenAI API integration configured and operational
 - ⚠️ Stripe integration available but optional (billing routes handle gracefully when not configured)
-- ✅ All core backend API routes implemented
-- ✅ All frontend pages and components built
+- ✅ All core backend API routes implemented and tested
+- 🚧 Frontend pages: Landing page complete, dashboards in progress
 - ✅ AI services operational (job matching, skill gap analysis, learning plans, resume parsing)
+- ✅ Pipeline management service for application tracking
+- ✅ Interview scheduling service with calendar integration
+- ✅ Notification system (in-app and Slack)
+- ✅ GitHub repository integration for skill extraction
+- ✅ 2FA support for employers and admins
 
-**Ready to Use:**
-The application is fully functional and ready for users to:
-1. Sign up and authenticate via Replit Auth
-2. Select their role (job seeker, employer, or admin)
-3. Access role-specific dashboards with full functionality
-4. Use AI-powered features for matching, skill analysis, and learning plans
+**Current Development Phase:**
+Building frontend pages to connect with the comprehensive backend APIs. The backend is fully functional with:
+- Complete authentication and authorization system
+- AI-powered matching and skill analysis
+- Application pipeline management with notifications
+- Interview scheduling with external calendar integration
+- Multi-tenant support with role-based access control
 
-**Optional Setup:**
-- Stripe integration can be added later by setting STRIPE_SECRET_KEY environment variable
+**Next Steps:**
+1. Build authentication and role selection UI
+2. Create job seeker dashboard with application tracking
+3. Create employer dashboard with candidate pipeline
+4. Build job listings and detail pages
+5. Implement profile management interfaces
 
 ## User Preferences
 
@@ -149,3 +159,103 @@ Preferred communication style: Simple, everyday language.
 - **TypeScript**: Type safety across client, server, and shared code
 - **esbuild**: Server-side bundling for production deployment
 - **Drizzle Kit**: Database migration and schema management CLI
+
+## Backend API Services
+
+### Core Services Implemented
+
+**AIService** (`server/aiService.ts`):
+- Job-candidate matching analysis with explainable AI
+- Skill gap analysis for career transitions
+- Learning roadmap generation with prioritized resources
+- Resume parsing and skill extraction
+- Job description parsing with salary suggestions
+- Skill test generation for assessments
+
+**MatchingService** (`server/matchingService.ts`):
+- Semantic similarity matching using OpenAI embeddings
+- Keyword-based skill matching
+- Experience level compatibility scoring
+- Configurable matching weights per tenant
+- Batch matching for multiple candidates/jobs
+
+**PipelineService** (`server/pipelineService.ts`):
+- Application stage transitions with validation
+- Application timeline tracking
+- Bulk stage updates for multiple applications
+- Stage metrics and analytics for employers
+- Integration with notification system
+
+**InterviewService** (`server/interviewService.ts`):
+- Interview scheduling and management
+- Calendar integration (Google Calendar support)
+- Rescheduling and cancellation workflows
+- Interview completion with feedback capture
+
+**NotificationService** (`server/notificationService.ts`):
+- In-app notification creation and management
+- Application status change notifications
+- Interview scheduling notifications
+- Slack integration for real-time team alerts
+
+**GitHubService** (`server/githubService.ts`):
+- Repository import and analysis
+- Skill extraction from code and technologies
+- Contribution score calculation
+- Language detection and proficiency estimation
+
+### API Endpoints Summary
+
+**Authentication** (`/api/auth/*`):
+- User authentication via Replit Auth
+- 2FA setup and verification for employers/admins
+- Password reset workflow
+- Session management
+
+**Job Seeker** (`/api/job-seeker/*`):
+- Profile management and resume upload
+- Job search and matching
+- Application submission and tracking
+- Learning plan generation
+- GitHub integration
+
+**Employer** (`/api/employer/*`):
+- Company profile management
+- Job posting creation and management
+- Candidate pipeline and application reviews
+- Interview scheduling
+- Team member management
+- Analytics and metrics
+
+**Admin** (`/api/admin/*`):
+- Tenant management
+- User oversight and role assignment
+- System health monitoring
+- Billing and subscription management
+
+## Future Enhancements
+
+### Security Hardening (Low Priority)
+The following architectural improvements can be implemented after MVP launch:
+1. **Pipeline Service Refactoring**: Update `updateApplicationStage` to accept application ID instead of full object
+2. **Enhanced Validation Layers**: Add additional request validation middleware
+3. **Authorization Audit**: Review and strengthen permission checks across all endpoints
+4. **Rate Limiting**: Implement per-user API rate limits
+5. **Audit Logging**: Add comprehensive audit trail for sensitive operations
+
+### Feature Additions
+- Real-time chat between job seekers and employers
+- Video interview integration
+- Advanced analytics dashboard with visualizations
+- Mobile responsive optimization
+- Email notification preferences
+- Advanced search filters with saved searches
+- Recommendation engine for job suggestions
+- Skills assessment test platform
+
+### Performance Optimizations
+- Database query optimization and indexing
+- Caching layer for frequently accessed data
+- CDN integration for static assets
+- Background job processing for AI operations
+- Pagination for large data sets
