@@ -1,6 +1,7 @@
 import type { InsertInterview, Interview, Application, User, IntegrationConfig } from "@shared/schema";
 import type { IStorage } from "./storage";
 import { NotificationService } from "./notificationService";
+import { googleCalendarService } from "./googleCalendarService";
 
 export interface CalendarEvent {
   title: string;
@@ -191,7 +192,20 @@ export class InterviewService {
       meetingUrl: interview.meetingUrl || undefined,
     };
 
-    return "calendar-event-id-placeholder";
+    try {
+      const result = await googleCalendarService.createEvent(googleCalendarConfig, event);
+      
+      if (result.meetingUrl && !interview.meetingUrl) {
+        await this.storage.updateInterview(interview.id, {
+          meetingUrl: result.meetingUrl,
+        });
+      }
+      
+      return result.eventId;
+    } catch (error) {
+      console.error("Failed to sync with Google Calendar:", error);
+      return undefined;
+    }
   }
 
   private async getCalendarIntegration(

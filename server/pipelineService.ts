@@ -20,31 +20,48 @@ export class PipelineService {
   }
 
   async updateApplicationStage(
-    applicationId: string,
+    application: Application,
     newStage: ApplicationStage,
     changedBy: User,
     notes?: string
   ): Promise<Application> {
-    const applications = await this.storage.getAllApplications();
-    const application = applications.find(a => a.id === applicationId);
-
-    if (!application) {
-      throw new Error("Application not found");
+    const job = await this.storage.getJobById(application.jobId);
+    if (!job) {
+      throw new Error("Job not found for this application");
     }
 
-    const oldStage = application.status as ApplicationStage;
+    const employerApplications = await this.storage.getApplicationsByEmployer(job.employerId);
+    const validatedApp = employerApplications.find(a => a.id === application.id);
+    
+    if (!validatedApp) {
+      throw new Error("Application not found or access denied");
+    }
+
+    const oldStage = validatedApp.status as ApplicationStage;
 
     if (!this.isValidTransition(oldStage, newStage)) {
       throw new Error(`Invalid stage transition from ${oldStage} to ${newStage}`);
     }
 
-    const updated = await this.storage.updateApplication(applicationId, {
+    const currentTimeline = (validatedApp.timeline as any[]) || [];
+    const newTimelineEntry = {
+      from: oldStage,
+      to: newStage,
+      stage: newStage,
       status: newStage,
+      date: new Date().toISOString(),
+      note: notes,
+      changedBy: `${changedBy.firstName || ''} ${changedBy.lastName || ''}`.trim() || changedBy.email || 'System',
+    };
+
+    const updated = await this.storage.updateApplication(validatedApp.id, {
+      status: newStage,
+      timeline: [...currentTimeline, newTimelineEntry] as any,
     });
 
     await this.notificationService.sendApplicationStatusChange(
       {
-        userId: application.jobSeekerId,
+        userId: validatedApp.jobSeekerId,
         application: updated,
         changedBy,
       },
@@ -71,36 +88,41 @@ export class PipelineService {
     employerId: string,
     stage?: ApplicationStage
   ): Promise<Application[]> {
-    const applications = await this.storage.getAllApplications();
+    const applications = await this.storage.getApplicationsByEmployer(employerId);
     
-    const filtered = applications.filter(app => {
-      if (stage) {
-        return app.status === stage;
-      }
-      return true;
-    });
+    if (stage) {
+      return applications.filter(app => app.status === stage);
+    }
 
-    return filtered;
+    return applications;
   }
 
-  async getApplicationTimeline(applicationId: string): Promise<StageTransition[]> {
-    return [];
+  async getApplicationTimeline(application: Application): Promise<StageTransition[]> {
+    const timeline = (application.timeline as any[]) || [];
+    
+    return timeline.map(entry => ({
+      from: (entry.from || entry.previousStage) as ApplicationStage,
+      to: (entry.to || entry.stage) as ApplicationStage,
+      timestamp: new Date(entry.date),
+      changedBy: entry.changedBy || 'System',
+      notes: entry.note,
+    }));
   }
 
   async bulkUpdateStage(
-    applicationIds: string[],
+    applications: Application[],
     newStage: ApplicationStage,
     changedBy: User,
     notes?: string
   ): Promise<Application[]> {
     const updated: Application[] = [];
 
-    for (const appId of applicationIds) {
+    for (const app of applications) {
       try {
-        const app = await this.updateApplicationStage(appId, newStage, changedBy, notes);
-        updated.push(app);
+        const updatedApp = await this.updateApplicationStage(app, newStage, changedBy, notes);
+        updated.push(updatedApp);
       } catch (error) {
-        console.error(`Failed to update application ${appId}:`, error);
+        console.error(`Failed to update application ${app.id}:`, error);
       }
     }
 
@@ -108,7 +130,7 @@ export class PipelineService {
   }
 
   async getStageMetrics(employerId: string): Promise<Record<ApplicationStage, number>> {
-    const applications = await this.storage.getAllApplications();
+    const applications = await this.storage.getApplicationsByEmployer(employerId);
 
     const metrics: Record<ApplicationStage, number> = {
       applied: 0,

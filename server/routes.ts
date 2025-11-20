@@ -719,6 +719,139 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  const pipelineService = new PipelineService(storage);
+
+  app.post('/api/applications/:id/stage', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const employer = await storage.getEmployer(userId);
+      
+      if (!user || !employer) {
+        return res.status(403).json({ message: "Forbidden - employer access required" });
+      }
+
+      const employerApplications = await storage.getApplicationsByEmployer(employer.id);
+      const application = employerApplications.find(a => a.id === req.params.id);
+      
+      if (!application) {
+        return res.status(404).json({ message: "Application not found or forbidden" });
+      }
+
+      const { stage, notes } = req.body;
+      
+      if (!['applied', 'interview', 'offer', 'hired', 'rejected'].includes(stage)) {
+        return res.status(400).json({ message: "Invalid stage" });
+      }
+
+      const updated = await pipelineService.updateApplicationStage(
+        application,
+        stage,
+        user,
+        notes
+      );
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating application stage:", error);
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Failed to update application stage" });
+    }
+  });
+
+  app.get('/api/applications/:id/timeline', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      const employer = await storage.getEmployer(userId);
+      
+      let application;
+      
+      if (jobSeeker) {
+        const jobSeekerApplications = await storage.getApplications(jobSeeker.id);
+        application = jobSeekerApplications.find(a => a.id === req.params.id);
+      } else if (employer) {
+        const employerApplications = await storage.getApplicationsByEmployer(employer.id);
+        application = employerApplications.find(a => a.id === req.params.id);
+      }
+      
+      if (!application) {
+        return res.status(404).json({ message: "Application not found or forbidden" });
+      }
+
+      const timeline = await pipelineService.getApplicationTimeline(application);
+      res.json(timeline);
+    } catch (error) {
+      console.error("Error fetching application timeline:", error);
+      if (error instanceof Error) {
+        return res.status(404).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Failed to fetch application timeline" });
+    }
+  });
+
+  app.post('/api/applications/bulk-update-stage', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const employer = await storage.getEmployer(userId);
+      
+      if (!user || !employer) {
+        return res.status(403).json({ message: "Forbidden - employer access required" });
+      }
+
+      const { applicationIds, stage, notes } = req.body;
+      
+      if (!Array.isArray(applicationIds) || applicationIds.length === 0) {
+        return res.status(400).json({ message: "Invalid application IDs" });
+      }
+      
+      if (!['applied', 'interview', 'offer', 'hired', 'rejected'].includes(stage)) {
+        return res.status(400).json({ message: "Invalid stage" });
+      }
+
+      const employerApplications = await storage.getApplicationsByEmployer(employer.id);
+      const employerAppIds = new Set(employerApplications.map(a => a.id));
+      
+      const validApplications = employerApplications.filter(app => applicationIds.includes(app.id));
+
+      if (validApplications.length === 0) {
+        return res.status(403).json({ message: "Forbidden - no valid applications to update" });
+      }
+
+      const updated = await pipelineService.bulkUpdateStage(
+        validApplications,
+        stage,
+        user,
+        notes
+      );
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error bulk updating stages:", error);
+      res.status(500).json({ message: "Failed to bulk update stages" });
+    }
+  });
+
+  app.get('/api/employer/pipeline/metrics', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employer = await storage.getEmployer(userId);
+      
+      if (!employer) {
+        return res.status(404).json({ message: "Employer profile not found" });
+      }
+
+      const metrics = await pipelineService.getStageMetrics(employer.id);
+      res.json(metrics);
+    } catch (error) {
+      console.error("Error fetching pipeline metrics:", error);
+      res.status(500).json({ message: "Failed to fetch pipeline metrics" });
+    }
+  });
+
   app.get('/api/employer/candidates/:jobSeekerId/tags', isAuthenticated, require2FA, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
@@ -2136,6 +2269,169 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching integrations:", error);
       res.status(500).json({ message: "Failed to fetch integrations" });
+    }
+  });
+
+  app.post('/api/integrations', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.tenantId) {
+        return res.status(403).json({ message: "Forbidden - no tenant" });
+      }
+
+      const validatedData = insertIntegrationConfigSchema.parse({
+        ...req.body,
+        tenantId: user.tenantId,
+      });
+
+      const config = await storage.createIntegrationConfig(validatedData);
+      res.json(config);
+    } catch (error) {
+      console.error("Error creating integration:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid integration data", errors: error });
+      }
+      res.status(500).json({ message: "Failed to create integration" });
+    }
+  });
+
+  app.patch('/api/integrations/:id', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.tenantId) {
+        return res.status(403).json({ message: "Forbidden - no tenant" });
+      }
+
+      const validatedData = insertIntegrationConfigSchema.partial().parse(req.body);
+      const updated = await storage.updateIntegrationConfig(req.params.id, validatedData);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating integration:", error);
+      res.status(500).json({ message: "Failed to update integration" });
+    }
+  });
+
+  app.delete('/api/integrations/:id', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      await storage.deleteIntegrationConfig(req.params.id);
+      res.json({ message: "Integration deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting integration:", error);
+      res.status(500).json({ message: "Failed to delete integration" });
+    }
+  });
+
+  const githubService = new (await import('./githubService')).GitHubService(storage);
+  const slackService = new (await import('./slackService')).SlackService(storage);
+
+  app.post('/api/integrations/slack/test', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const { config } = req.body;
+      const result = await slackService.testConnection(config);
+      res.json({ success: result });
+    } catch (error) {
+      console.error("Error testing Slack integration:", error);
+      res.status(500).json({ message: "Failed to test Slack integration" });
+    }
+  });
+
+  app.post('/api/integrations/slack/digest', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.tenantId) {
+        return res.status(403).json({ message: "Forbidden - no tenant" });
+      }
+
+      await slackService.sendDailyDigest(user.tenantId);
+      res.json({ message: "Digest sent successfully" });
+    } catch (error) {
+      console.error("Error sending Slack digest:", error);
+      res.status(500).json({ message: "Failed to send digest" });
+    }
+  });
+
+  app.post('/api/github/import', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      const { githubUsername } = req.body;
+      
+      if (!githubUsername) {
+        return res.status(400).json({ message: "GitHub username is required" });
+      }
+
+      const repos = await githubService.importUserRepos(jobSeeker.id, githubUsername);
+      res.json({ imported: repos.length, repos });
+    } catch (error) {
+      console.error("Error importing GitHub repos:", error);
+      res.status(500).json({ message: "Failed to import GitHub repos" });
+    }
+  });
+
+  app.post('/api/github/sync', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      const { githubUsername } = req.body;
+      
+      if (!githubUsername) {
+        return res.status(400).json({ message: "GitHub username is required" });
+      }
+
+      const result = await githubService.syncRepoData(jobSeeker.id, githubUsername);
+      res.json(result);
+    } catch (error) {
+      console.error("Error syncing GitHub repos:", error);
+      res.status(500).json({ message: "Failed to sync GitHub repos" });
+    }
+  });
+
+  app.post('/api/github/analyze', isAuthenticated, async (req: any, res) => {
+    try {
+      const { githubUsername } = req.body;
+      
+      if (!githubUsername) {
+        return res.status(400).json({ message: "GitHub username is required" });
+      }
+
+      const activity = await githubService.analyzeActivity(githubUsername);
+      res.json(activity);
+    } catch (error) {
+      console.error("Error analyzing GitHub activity:", error);
+      res.status(500).json({ message: "Failed to analyze GitHub activity" });
+    }
+  });
+
+  app.get('/api/github/repos', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const jobSeeker = await storage.getJobSeeker(userId);
+      
+      if (!jobSeeker) {
+        return res.status(404).json({ message: "Job seeker profile not found" });
+      }
+
+      const repos = await storage.getGithubRepos(jobSeeker.id);
+      res.json(repos);
+    } catch (error) {
+      console.error("Error fetching GitHub repos:", error);
+      res.status(500).json({ message: "Failed to fetch GitHub repos" });
     }
   });
 

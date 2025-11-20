@@ -1,5 +1,6 @@
 import type { InsertNotification, Notification, Application, Interview, User } from "@shared/schema";
 import type { IStorage } from "./storage";
+import { SlackService } from "./slackService";
 
 interface NotificationContext {
   userId: string;
@@ -10,7 +11,11 @@ interface NotificationContext {
 }
 
 export class NotificationService {
-  constructor(private storage: IStorage) {}
+  private slackService: SlackService;
+
+  constructor(private storage: IStorage) {
+    this.slackService = new SlackService(storage);
+  }
 
   async createNotification(data: InsertNotification): Promise<Notification> {
     return this.storage.createNotification(data);
@@ -66,6 +71,29 @@ export class NotificationService {
         changedBy: changedBy ? `${changedBy.firstName} ${changedBy.lastName}` : undefined,
       },
     });
+
+    if (application && changedBy) {
+      try {
+        const jobSeeker = await this.storage.getJobSeekerById(application.jobSeekerId);
+        if (jobSeeker) {
+          const user = await this.storage.getUser(jobSeeker.userId);
+          const tenantId = changedBy.tenantId || user?.tenantId;
+          
+          if (user && tenantId) {
+            await this.slackService.sendApplicationStatusNotification(
+              tenantId,
+              application,
+              oldStatus,
+              newStatus,
+              user,
+              changedBy
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Failed to send Slack notification:", error);
+      }
+    }
   }
 
   async sendInterviewScheduled(
@@ -91,6 +119,29 @@ export class NotificationService {
         duration: interview.duration,
       },
     });
+
+    if (application && interview.interviewers && interview.interviewers.length > 0) {
+      try {
+        const jobSeeker = await this.storage.getJobSeekerById(application.jobSeekerId);
+        if (jobSeeker) {
+          const user = await this.storage.getUser(jobSeeker.userId);
+          const interviewer = await this.storage.getUser(interview.interviewers[0]);
+          const tenantId = interviewer?.tenantId || user?.tenantId;
+          
+          if (user && interviewer && tenantId) {
+            await this.slackService.sendInterviewScheduledNotification(
+              tenantId,
+              interview,
+              application,
+              user,
+              interviewer
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Failed to send Slack notification:", error);
+      }
+    }
   }
 
   async sendInterviewReminder(

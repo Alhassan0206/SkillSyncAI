@@ -34,6 +34,7 @@ export interface IStorage {
   
   getApplications(jobSeekerId?: string, jobId?: string): Promise<schema.Application[]>;
   getAllApplications(): Promise<schema.Application[]>;
+  getApplicationsByEmployer(employerId: string): Promise<schema.Application[]>;
   createApplication(application: schema.InsertApplication): Promise<schema.Application>;
   updateApplication(id: string, data: Partial<schema.InsertApplication>): Promise<schema.Application>;
   
@@ -312,8 +313,35 @@ export class DbStorage implements IStorage {
     return db.select().from(schema.applications);
   }
 
+  async getApplicationsByEmployer(employerId: string): Promise<schema.Application[]> {
+    const jobs = await this.getJobs(employerId);
+    const jobIds = jobs.map(j => j.id);
+    
+    if (jobIds.length === 0) {
+      return [];
+    }
+    
+    const applications = await db.select().from(schema.applications);
+    return applications.filter(app => jobIds.includes(app.jobId));
+  }
+
   async createApplication(insertApplication: schema.InsertApplication): Promise<schema.Application> {
-    const [application] = await db.insert(schema.applications).values(insertApplication as any).returning();
+    const initialTimeline = [{
+      from: 'applied',
+      to: 'applied',
+      stage: 'applied',
+      status: 'applied',
+      date: new Date().toISOString(),
+      changedBy: 'System',
+      note: 'Application submitted',
+    }];
+    
+    const applicationWithTimeline = {
+      ...insertApplication,
+      timeline: initialTimeline as any,
+    };
+    
+    const [application] = await db.insert(schema.applications).values(applicationWithTimeline as any).returning();
     return application;
   }
 
