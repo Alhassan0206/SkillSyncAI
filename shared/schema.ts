@@ -106,13 +106,22 @@ export const applications = pgTable("applications", {
   jobId: varchar("job_id").notNull().references(() => jobs.id),
   jobSeekerId: varchar("job_seeker_id").notNull().references(() => jobSeekers.id),
   status: text("status").notNull().default("applied"),
+  stage: text("stage").notNull().default("applied"),
   coverLetter: text("cover_letter"),
   timeline: jsonb("timeline").$type<Array<{
     stage: string;
     status: string;
-    date?: string;
+    date: string;
     note?: string;
-  }>>(),
+    changedBy?: string;
+  }>>().default(sql`'[]'::jsonb`),
+  rejectionReason: text("rejection_reason"),
+  offerDetails: jsonb("offer_details").$type<{
+    salary?: number;
+    startDate?: string;
+    benefits?: string[];
+    notes?: string;
+  }>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -329,6 +338,60 @@ export const matchingWeights = pgTable("matching_weights", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+export const interviews = pgTable("interviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  applicationId: varchar("application_id").notNull().references(() => applications.id),
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  duration: integer("duration").notNull().default(60),
+  interviewType: text("interview_type").notNull(),
+  location: text("location"),
+  meetingUrl: text("meeting_url"),
+  interviewers: text("interviewers").array(),
+  status: text("status").notNull().default("scheduled"),
+  notes: text("notes"),
+  feedback: jsonb("feedback").$type<{
+    rating?: number;
+    comments?: string;
+    strengths?: string[];
+    concerns?: string[];
+  }>(),
+  calendarEventId: text("calendar_event_id"),
+  reminderSent: boolean("reminder_sent").default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  relatedEntityType: text("related_entity_type"),
+  relatedEntityId: varchar("related_entity_id"),
+  read: boolean("read").default(false),
+  actionUrl: text("action_url"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const integrationConfigs = pgTable("integration_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  integrationType: text("integration_type").notNull(),
+  isEnabled: boolean("is_enabled").default(true),
+  config: jsonb("config").$type<{
+    webhookUrl?: string;
+    apiKey?: string;
+    channelId?: string;
+    calendarId?: string;
+    settings?: Record<string, any>;
+  }>(),
+  lastSyncAt: timestamp("last_sync_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 export const insertTenantSchema = createInsertSchema(tenants).omit({ id: true, createdAt: true });
 export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true, updatedAt: true });
 export const upsertUserSchema = createInsertSchema(users).omit({ createdAt: true, updatedAt: true });
@@ -352,6 +415,9 @@ export const insertAchievementSchema = createInsertSchema(achievements).omit({ i
 export const insertMatchFeedbackSchema = createInsertSchema(matchFeedback).omit({ id: true, createdAt: true });
 export const insertSkillEmbeddingSchema = createInsertSchema(skillEmbeddings).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMatchingWeightSchema = createInsertSchema(matchingWeights).omit({ id: true, updatedAt: true });
+export const insertInterviewSchema = createInsertSchema(interviews).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export const insertIntegrationConfigSchema = createInsertSchema(integrationConfigs).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type Tenant = typeof tenants.$inferSelect;
 export type InsertTenant = z.infer<typeof insertTenantSchema>;
@@ -419,3 +485,12 @@ export type InsertSkillEmbedding = z.infer<typeof insertSkillEmbeddingSchema>;
 
 export type MatchingWeight = typeof matchingWeights.$inferSelect;
 export type InsertMatchingWeight = z.infer<typeof insertMatchingWeightSchema>;
+
+export type Interview = typeof interviews.$inferSelect;
+export type InsertInterview = z.infer<typeof insertInterviewSchema>;
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
+export type IntegrationConfig = typeof integrationConfigs.$inferSelect;
+export type InsertIntegrationConfig = z.infer<typeof insertIntegrationConfigSchema>;
