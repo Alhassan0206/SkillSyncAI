@@ -7,6 +7,7 @@ import { matchingService } from "./matchingService";
 import { PipelineService } from "./pipelineService";
 import { InterviewService } from "./interviewService";
 import { NotificationService } from "./notificationService";
+import { z } from "zod";
 import { insertJobSeekerSchema, insertEmployerSchema, insertJobSchema, insertApplicationSchema, insertMatchSchema, insertLearningPlanSchema, insertTeamInvitationSchema, insertPasswordResetTokenSchema, insertCandidateTagSchema, insertCandidateNoteSchema, insertCandidateRatingSchema, insertGithubRepoSchema, insertResumeParseQueueSchema, insertSkillEvidenceSchema, insertSkillEndorsementSchema, insertSkillTestSchema, insertAchievementSchema, insertMatchFeedbackSchema, insertMatchingWeightSchema, insertInterviewSchema, insertNotificationSchema, insertIntegrationConfigSchema } from "@shared/schema";
 import Stripe from "stripe";
 import { randomBytes, createHash } from "crypto";
