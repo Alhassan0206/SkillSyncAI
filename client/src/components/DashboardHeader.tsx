@@ -1,6 +1,3 @@
-import { Bell } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -10,8 +7,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import ThemeToggle from "./ThemeToggle";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import Notifications from "./Notifications";
 import { useLocation } from "wouter";
 
 interface DashboardHeaderProps {
@@ -69,15 +68,7 @@ export default function DashboardHeader({
       </div>
 
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="relative" data-testid="button-notifications">
-          <Bell className="w-5 h-5" />
-          {notificationCount > 0 && (
-            <Badge className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center p-0 text-xs">
-              {notificationCount > 9 ? "9+" : notificationCount}
-            </Badge>
-          )}
-        </Button>
-
+        <Notifications />
         <ThemeToggle />
 
         <DropdownMenu>
