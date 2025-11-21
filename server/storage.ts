@@ -130,6 +130,24 @@ export interface IStorage {
   createIntegrationConfig(config: schema.InsertIntegrationConfig): Promise<schema.IntegrationConfig>;
   updateIntegrationConfig(id: string, data: Partial<schema.InsertIntegrationConfig>): Promise<schema.IntegrationConfig>;
   deleteIntegrationConfig(id: string): Promise<void>;
+
+  trackAnalyticsEvent(event: schema.InsertAnalyticsEvent): Promise<schema.AnalyticsEvent>;
+  getAnalyticsEvents(tenantId: string, filters?: { entityType?: string; entityId?: string; startDate?: Date; endDate?: Date }): Promise<schema.AnalyticsEvent[]>;
+  
+  getJobMetrics(tenantId: string, jobId: string, startDate?: Date, endDate?: Date): Promise<schema.JobMetricsDaily[]>;
+  upsertJobMetrics(metrics: schema.InsertJobMetricsDaily): Promise<schema.JobMetricsDaily>;
+  
+  getCandidateFunnelSnapshots(tenantId: string, jobId?: string, startDate?: Date, endDate?: Date): Promise<schema.CandidateFunnelSnapshot[]>;
+  createCandidateFunnelSnapshot(snapshot: schema.InsertCandidateFunnelSnapshot): Promise<schema.CandidateFunnelSnapshot>;
+  
+  getTimeToHireRecords(tenantId: string, jobId?: string, startDate?: Date, endDate?: Date): Promise<schema.TimeToHireRecord[]>;
+  createTimeToHireRecord(record: schema.InsertTimeToHireRecord): Promise<schema.TimeToHireRecord>;
+  
+  getRevenueTransactions(tenantId: string, startDate?: Date, endDate?: Date): Promise<schema.RevenueTransaction[]>;
+  createRevenueTransaction(transaction: schema.InsertRevenueTransaction): Promise<schema.RevenueTransaction>;
+  
+  getRevenueAggregates(tenantId: string, startMonth?: Date, endMonth?: Date): Promise<schema.RevenueAggregatesMonthly[]>;
+  upsertRevenueAggregate(aggregate: schema.InsertRevenueAggregatesMonthly): Promise<schema.RevenueAggregatesMonthly>;
 }
 
 export class DbStorage implements IStorage {
@@ -833,6 +851,172 @@ export class DbStorage implements IStorage {
 
   async deleteIntegrationConfig(id: string): Promise<void> {
     await db.delete(schema.integrationConfigs).where(eq(schema.integrationConfigs.id, id));
+  }
+
+  async trackAnalyticsEvent(event: schema.InsertAnalyticsEvent): Promise<schema.AnalyticsEvent> {
+    const [created] = await db.insert(schema.analyticsEvents).values(event).returning();
+    return created;
+  }
+
+  async getAnalyticsEvents(tenantId: string, filters?: { entityType?: string; entityId?: string; startDate?: Date; endDate?: Date }): Promise<schema.AnalyticsEvent[]> {
+    const { and, gte, lte } = await import("drizzle-orm");
+    const conditions = [eq(schema.analyticsEvents.tenantId, tenantId)];
+    
+    if (filters?.entityType) {
+      conditions.push(eq(schema.analyticsEvents.entityType, filters.entityType));
+    }
+    if (filters?.entityId) {
+      conditions.push(eq(schema.analyticsEvents.entityId, filters.entityId));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(schema.analyticsEvents.occurredAt, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(schema.analyticsEvents.occurredAt, filters.endDate));
+    }
+    
+    return db.select().from(schema.analyticsEvents).where(and(...conditions)).orderBy(schema.analyticsEvents.occurredAt);
+  }
+
+  async getJobMetrics(tenantId: string, jobId: string, startDate?: Date, endDate?: Date): Promise<schema.JobMetricsDaily[]> {
+    const { and, gte, lte } = await import("drizzle-orm");
+    
+    const job = await this.getJobById(jobId);
+    if (!job) {
+      return [];
+    }
+    
+    const employer = await db.select().from(schema.employers).where(eq(schema.employers.id, job.employerId)).limit(1);
+    if (!employer[0] || employer[0].tenantId !== tenantId) {
+      return [];
+    }
+    
+    const conditions = [eq(schema.jobMetricsDaily.jobId, jobId)];
+    
+    if (startDate) {
+      conditions.push(gte(schema.jobMetricsDaily.date, startDate));
+    }
+    if (endDate) {
+      conditions.push(lte(schema.jobMetricsDaily.date, endDate));
+    }
+    
+    return db.select().from(schema.jobMetricsDaily).where(and(...conditions)).orderBy(schema.jobMetricsDaily.date);
+  }
+
+  async upsertJobMetrics(metrics: schema.InsertJobMetricsDaily): Promise<schema.JobMetricsDaily> {
+    const [result] = await db.insert(schema.jobMetricsDaily)
+      .values(metrics)
+      .onConflictDoUpdate({
+        target: [schema.jobMetricsDaily.jobId, schema.jobMetricsDaily.date],
+        set: {
+          ...metrics,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return result;
+  }
+
+  async getCandidateFunnelSnapshots(tenantId: string, jobId?: string, startDate?: Date, endDate?: Date): Promise<schema.CandidateFunnelSnapshot[]> {
+    const { and, gte, lte } = await import("drizzle-orm");
+    const conditions = [eq(schema.candidateFunnelSnapshots.tenantId, tenantId)];
+    
+    if (jobId) {
+      conditions.push(eq(schema.candidateFunnelSnapshots.jobId, jobId));
+    }
+    if (startDate) {
+      conditions.push(gte(schema.candidateFunnelSnapshots.date, startDate));
+    }
+    if (endDate) {
+      conditions.push(lte(schema.candidateFunnelSnapshots.date, endDate));
+    }
+    
+    return db.select().from(schema.candidateFunnelSnapshots).where(and(...conditions)).orderBy(schema.candidateFunnelSnapshots.date);
+  }
+
+  async createCandidateFunnelSnapshot(snapshot: schema.InsertCandidateFunnelSnapshot): Promise<schema.CandidateFunnelSnapshot> {
+    const [created] = await db.insert(schema.candidateFunnelSnapshots).values(snapshot).returning();
+    return created;
+  }
+
+  async getTimeToHireRecords(tenantId: string, jobId?: string, startDate?: Date, endDate?: Date): Promise<schema.TimeToHireRecord[]> {
+    const { and, gte, lte, inArray } = await import("drizzle-orm");
+    
+    const tenantJobs = await db.select({ id: schema.jobs.id })
+      .from(schema.jobs)
+      .innerJoin(schema.employers, eq(schema.jobs.employerId, schema.employers.id))
+      .where(eq(schema.employers.tenantId, tenantId));
+    
+    const tenantJobIds = tenantJobs.map(j => j.id);
+    if (tenantJobIds.length === 0) {
+      return [];
+    }
+    
+    const conditions = [inArray(schema.timeToHireRecords.jobId, tenantJobIds)];
+    
+    if (jobId) {
+      conditions.push(eq(schema.timeToHireRecords.jobId, jobId));
+    }
+    if (startDate) {
+      conditions.push(gte(schema.timeToHireRecords.hiredAt, startDate));
+    }
+    if (endDate) {
+      conditions.push(lte(schema.timeToHireRecords.hiredAt, endDate));
+    }
+    
+    return db.select().from(schema.timeToHireRecords).where(and(...conditions)).orderBy(schema.timeToHireRecords.hiredAt);
+  }
+
+  async createTimeToHireRecord(record: schema.InsertTimeToHireRecord): Promise<schema.TimeToHireRecord> {
+    const [created] = await db.insert(schema.timeToHireRecords).values(record).returning();
+    return created;
+  }
+
+  async getRevenueTransactions(tenantId: string, startDate?: Date, endDate?: Date): Promise<schema.RevenueTransaction[]> {
+    const { and, gte, lte } = await import("drizzle-orm");
+    const conditions = [eq(schema.revenueTransactions.tenantId, tenantId)];
+    
+    if (startDate) {
+      conditions.push(gte(schema.revenueTransactions.date, startDate));
+    }
+    if (endDate) {
+      conditions.push(lte(schema.revenueTransactions.date, endDate));
+    }
+    
+    return db.select().from(schema.revenueTransactions).where(and(...conditions)).orderBy(schema.revenueTransactions.date);
+  }
+
+  async createRevenueTransaction(transaction: schema.InsertRevenueTransaction): Promise<schema.RevenueTransaction> {
+    const [created] = await db.insert(schema.revenueTransactions).values(transaction).returning();
+    return created;
+  }
+
+  async getRevenueAggregates(tenantId: string, startMonth?: Date, endMonth?: Date): Promise<schema.RevenueAggregatesMonthly[]> {
+    const { and, gte, lte } = await import("drizzle-orm");
+    const conditions = [eq(schema.revenueAggregatesMonthly.tenantId, tenantId)];
+    
+    if (startMonth) {
+      conditions.push(gte(schema.revenueAggregatesMonthly.month, startMonth));
+    }
+    if (endMonth) {
+      conditions.push(lte(schema.revenueAggregatesMonthly.month, endMonth));
+    }
+    
+    return db.select().from(schema.revenueAggregatesMonthly).where(and(...conditions)).orderBy(schema.revenueAggregatesMonthly.month);
+  }
+
+  async upsertRevenueAggregate(aggregate: schema.InsertRevenueAggregatesMonthly): Promise<schema.RevenueAggregatesMonthly> {
+    const [result] = await db.insert(schema.revenueAggregatesMonthly)
+      .values(aggregate)
+      .onConflictDoUpdate({
+        target: [schema.revenueAggregatesMonthly.tenantId, schema.revenueAggregatesMonthly.month],
+        set: {
+          ...aggregate,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return result;
   }
 }
 

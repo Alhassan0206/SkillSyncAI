@@ -2492,5 +2492,157 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/analytics/job-metrics/:jobId', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const jobId = req.params.jobId;
+      
+      if (!user?.tenantId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      const dateRangeSchema = z.object({
+        startDate: z.string().optional().transform(val => val ? new Date(val) : undefined),
+        endDate: z.string().optional().transform(val => val ? new Date(val) : undefined)
+      });
+      
+      const { startDate, endDate } = dateRangeSchema.parse(req.query);
+      
+      const metrics = await storage.getJobMetrics(user.tenantId, jobId, startDate, endDate);
+      res.json(metrics);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid date parameters", errors: error.errors });
+      }
+      console.error("Error fetching job metrics:", error);
+      res.status(500).json({ message: "Failed to fetch job metrics" });
+    }
+  });
+
+  app.get('/api/analytics/candidate-funnel', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.tenantId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      const funnelQuerySchema = z.object({
+        jobId: z.string().optional(),
+        startDate: z.string().optional().transform(val => val ? new Date(val) : undefined),
+        endDate: z.string().optional().transform(val => val ? new Date(val) : undefined)
+      });
+      
+      const { jobId, startDate, endDate } = funnelQuerySchema.parse(req.query);
+      
+      const snapshots = await storage.getCandidateFunnelSnapshots(user.tenantId, jobId, startDate, endDate);
+      res.json(snapshots);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid query parameters", errors: error.errors });
+      }
+      console.error("Error fetching funnel snapshots:", error);
+      res.status(500).json({ message: "Failed to fetch candidate funnel data" });
+    }
+  });
+
+  app.get('/api/analytics/time-to-hire', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.tenantId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      const timeToHireQuerySchema = z.object({
+        jobId: z.string().optional(),
+        startDate: z.string().optional().transform(val => val ? new Date(val) : undefined),
+        endDate: z.string().optional().transform(val => val ? new Date(val) : undefined)
+      });
+      
+      const { jobId, startDate, endDate } = timeToHireQuerySchema.parse(req.query);
+      
+      const records = await storage.getTimeToHireRecords(user.tenantId, jobId, startDate, endDate);
+      res.json(records);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid query parameters", errors: error.errors });
+      }
+      console.error("Error fetching time-to-hire records:", error);
+      res.status(500).json({ message: "Failed to fetch time-to-hire data" });
+    }
+  });
+
+  app.get('/api/analytics/revenue', isAuthenticated, require2FA, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.tenantId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      const revenueQuerySchema = z.object({
+        startDate: z.string().optional().transform(val => val ? new Date(val) : undefined),
+        endDate: z.string().optional().transform(val => val ? new Date(val) : undefined),
+        aggregated: z.coerce.boolean().optional().default(false)
+      });
+      
+      const { startDate, endDate, aggregated } = revenueQuerySchema.parse(req.query);
+      
+      if (aggregated) {
+        const aggregates = await storage.getRevenueAggregates(user.tenantId, startDate, endDate);
+        res.json(aggregates);
+      } else {
+        const transactions = await storage.getRevenueTransactions(user.tenantId, startDate, endDate);
+        res.json(transactions);
+      }
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid query parameters", errors: error.errors });
+      }
+      console.error("Error fetching revenue data:", error);
+      res.status(500).json({ message: "Failed to fetch revenue data" });
+    }
+  });
+
+  app.post('/api/analytics/events', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (!user?.tenantId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      const eventSchema = z.object({
+        entityType: z.string(),
+        entityId: z.string(),
+        eventType: z.string(),
+        payload: z.record(z.any()).optional()
+      });
+      
+      const validatedData = eventSchema.parse(req.body);
+      
+      const event = await storage.trackAnalyticsEvent({
+        ...validatedData,
+        tenantId: user.tenantId,
+        actorId: userId,
+        occurredAt: new Date()
+      });
+      
+      res.json(event);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid event data", errors: error.errors });
+      }
+      console.error("Error tracking analytics event:", error);
+      res.status(500).json({ message: "Failed to track analytics event" });
+    }
+  });
+
   return createServer(app);
 }
