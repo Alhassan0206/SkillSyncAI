@@ -14,6 +14,10 @@ import { randomBytes, createHash } from "crypto";
 import { authEnhancements, require2FA } from "./authEnhancements";
 import bcrypt from "bcryptjs";
 import { setupOAuth } from "./oauth";
+import { csrfProtection, generateCsrfTokenRoute } from "./csrfProtection";
+import { createAuditLogger } from "./auditLog";
+import { createGDPRService } from "./gdprService";
+import { emailService } from "./emailService";
 
 const stripe = process.env.STRIPE_SECRET_KEY 
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2025-10-29.clover" })
@@ -22,6 +26,11 @@ const stripe = process.env.STRIPE_SECRET_KEY
 export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
   setupOAuth(app);
+
+  // Initialize security and audit services
+  app.use(csrfProtection);
+  const auditLogger = createAuditLogger(storage);
+  const gdprService = createGDPRService(storage, auditLogger);
 
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
