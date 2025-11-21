@@ -2654,5 +2654,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // CSRF Token endpoint
+  app.post('/api/csrf-token', (req, res) => {
+    generateCsrfTokenRoute(req, res);
+  });
+
+  // GDPR endpoints
+  app.get('/api/gdpr/export', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const data = await gdprService.exportUserData(userId, req);
+      res.setHeader('Content-Disposition', 'attachment; filename=user-data.json');
+      res.setHeader('Content-Type', 'application/json');
+      res.json(data);
+    } catch (error) {
+      console.error('GDPR export error:', error);
+      res.status(500).json({ message: 'Failed to export data' });
+    }
+  });
+
+  app.delete('/api/gdpr/delete', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { confirm } = req.body;
+      if (confirm !== true) {
+        return res.status(400).json({ message: 'Deletion requires explicit confirmation' });
+      }
+      
+      await gdprService.deleteUserData(userId, req);
+      res.json({ message: 'Your data deletion request has been processed' });
+    } catch (error) {
+      console.error('GDPR delete error:', error);
+      res.status(500).json({ message: 'Failed to delete data' });
+    }
+  });
+
+  app.get('/api/gdpr/status', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const status = await gdprService.getRightToBeForgotten(userId);
+      res.json(status);
+    } catch (error) {
+      console.error('GDPR status error:', error);
+      res.status(500).json({ message: 'Failed to get GDPR status' });
+    }
+  });
+
+  // Audit log endpoints (admin only)
+  app.get('/api/admin/audit-logs', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Unauthorized' });
+      }
+
+      res.json({ 
+        message: 'Audit logging is enabled',
+        note: 'Implement audit_logs table in database to persist logs'
+      });
+    } catch (error) {
+      console.error('Audit log error:', error);
+      res.status(500).json({ message: 'Failed to fetch audit logs' });
+    }
+  });
+
   return createServer(app);
 }

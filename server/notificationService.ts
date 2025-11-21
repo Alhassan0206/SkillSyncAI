@@ -169,7 +169,7 @@ export class NotificationService {
   }
 
   async getUserNotifications(userId: string, unreadOnly = false): Promise<Notification[]> {
-    return this.storage.getNotifications(userId, unreadOnly);
+    return this.storage.getNotifications(userId, 100, 0);
   }
 
   async markAsRead(notificationId: string): Promise<void> {
