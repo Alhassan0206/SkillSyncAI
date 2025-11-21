@@ -4,22 +4,29 @@ import DashboardHeader from "@/components/DashboardHeader";
 import StatsCard from "@/components/StatsCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, Users, Eye, Target, Calendar, Award } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, Users, Eye, Target, Award, Download } from "lucide-react";
+import { ApplicationFunnelChartComponent } from "@/components/charts/ApplicationFunnelChart";
+import { JobPerformanceChart } from "@/components/charts/JobPerformanceChart";
+import { MatchAcceptanceChart } from "@/components/charts/MatchAcceptanceChart";
+import { exportToCSV } from "@/lib/csvExport";
 
 export default function EmployerAnalytics() {
   const { user } = useAuth() as any;
   
-  const { data: profile } = useQuery<any>({
+  const { data: profile, isLoading: profileLoading } = useQuery<any>({
     queryKey: ['/api/employer/profile'],
   });
 
-  const { data: jobs } = useQuery<any[]>({
+  const { data: jobs, isLoading: jobsLoading } = useQuery<any[]>({
     queryKey: ['/api/jobs'],
   });
 
-  const { data: applications } = useQuery<any[]>({
+  const { data: applications, isLoading: applicationsLoading } = useQuery<any[]>({
     queryKey: ['/api/employer/applications'],
   });
+
+  const isLoading = profileLoading || jobsLoading || applicationsLoading;
 
   const employerJobs = jobs?.filter(job => job.employerId === profile?.id) || [];
   
@@ -78,6 +85,20 @@ export default function EmployerAnalytics() {
     };
   }).sort((a, b) => b.applications - a.applications);
 
+  const funnelData = [
+    { name: "Applied", value: applications?.filter(a => a.status === 'applied').length || 0, fill: "hsl(var(--primary))" },
+    { name: "Reviewing", value: applications?.filter(a => a.status === 'reviewing').length || 0, fill: "hsl(var(--warning))" },
+    { name: "Interview", value: applications?.filter(a => a.status === 'interview').length || 0, fill: "hsl(var(--chart-3))" },
+    { name: "Accepted", value: applications?.filter(a => a.status === 'accepted').length || 0, fill: "hsl(var(--success))" },
+  ];
+
+  const acceptanceData = [
+    { name: "Accepted", value: applications?.filter(a => a.status === 'accepted').length || 0 },
+    { name: "Interview", value: applications?.filter(a => a.status === 'interview').length || 0 },
+    { name: "Reviewing", value: applications?.filter(a => a.status === 'reviewing').length || 0 },
+    { name: "Rejected", value: applications?.filter(a => a.status === 'rejected').length || 0 },
+  ];
+
   return (
     <div className="flex flex-col flex-1">
       <DashboardHeader 
@@ -93,18 +114,40 @@ export default function EmployerAnalytics() {
             <p className="text-muted-foreground">Track your hiring performance and metrics</p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {stats.map((stat, index) => (
-              <StatsCard key={index} {...stat} />
-            ))}
-          </div>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-muted-foreground">Loading analytics...</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {stats.map((stat, index) => (
+                  <StatsCard key={index} {...stat} />
+                ))}
+              </div>
+
+          <JobPerformanceChart data={jobPerformance} />
 
           <Card>
-            <CardHeader>
-              <CardTitle>Job Performance</CardTitle>
-              <CardDescription>
-                Application metrics across all your job postings
-              </CardDescription>
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+              <div>
+                <CardTitle>Job Performance Details</CardTitle>
+                <CardDescription>
+                  Application metrics across all your job postings
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportToCSV(jobPerformance, 'job-performance-details')}
+                data-testid="button-export-job-details"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export CSV
+              </Button>
             </CardHeader>
             <CardContent>
               {jobPerformance.length > 0 ? (
@@ -148,93 +191,42 @@ export default function EmployerAnalytics() {
           </Card>
 
           <div className="grid md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Application Funnel</CardTitle>
-                <CardDescription>Candidate progression through stages</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <FunnelStage 
-                    label="Applied" 
-                    count={applications?.filter(a => a.status === 'applied').length || 0}
-                    total={totalApplications}
-                    color="bg-blue-500"
-                  />
-                  <FunnelStage 
-                    label="Reviewing" 
-                    count={applications?.filter(a => a.status === 'reviewing').length || 0}
-                    total={totalApplications}
-                    color="bg-yellow-500"
-                  />
-                  <FunnelStage 
-                    label="Interview" 
-                    count={applications?.filter(a => a.status === 'interview').length || 0}
-                    total={totalApplications}
-                    color="bg-purple-500"
-                  />
-                  <FunnelStage 
-                    label="Accepted" 
-                    count={applications?.filter(a => a.status === 'accepted').length || 0}
-                    total={totalApplications}
-                    color="bg-green-500"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick Insights</CardTitle>
-                <CardDescription>Key hiring metrics at a glance</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Most Popular Job</span>
-                  <span className="text-sm font-medium">
-                    {jobPerformance[0]?.title || "N/A"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Total Candidates</span>
-                  <span className="text-sm font-medium">{totalApplications}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Avg. Applications/Job</span>
-                  <span className="text-sm font-medium">{avgApplicationsPerJob}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Success Rate</span>
-                  <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                    {acceptanceRate}%
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
+            <ApplicationFunnelChartComponent data={funnelData} />
+            <MatchAcceptanceChart data={acceptanceData} />
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Insights</CardTitle>
+              <CardDescription>Key hiring metrics at a glance</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Most Popular Job</span>
+                <span className="text-sm font-medium">
+                  {jobPerformance[0]?.title || "N/A"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Total Candidates</span>
+                <span className="text-sm font-medium">{totalApplications}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Avg. Applications/Job</span>
+                <span className="text-sm font-medium">{avgApplicationsPerJob}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Success Rate</span>
+                <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                  {acceptanceRate}%
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+            </>
+          )}
         </div>
       </main>
-    </div>
-  );
-}
-
-function FunnelStage({ label, count, total, color }: { label: string; count: number; total: number; color: string }) {
-  const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-  
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between text-sm">
-        <span className="font-medium">{label}</span>
-        <span className="text-muted-foreground">
-          {count} ({percentage}%)
-        </span>
-      </div>
-      <div className="w-full bg-muted rounded-full h-2">
-        <div 
-          className={`h-2 rounded-full ${color} transition-all`}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
     </div>
   );
 }

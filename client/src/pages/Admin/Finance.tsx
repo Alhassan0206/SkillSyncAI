@@ -1,51 +1,115 @@
 import { useQuery } from "@tanstack/react-query";
 import DashboardHeader from "@/components/DashboardHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, TrendingUp, CreditCard, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DollarSign, TrendingUp, CreditCard, Users, Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { RevenueChart } from "@/components/charts/RevenueChart";
+import { exportToCSV } from "@/lib/csvExport";
 
 export default function Finance() {
   const { data: stats } = useQuery<any>({
     queryKey: ['/api/admin/stats'],
   });
 
+  const { data: tenants, isLoading: tenantsLoading } = useQuery<any[]>({
+    queryKey: ['/api/admin/tenants'],
+  });
+
+  const { data: revenueAggregates, isLoading: revenueLoading } = useQuery<any[]>({
+    queryKey: ['/api/analytics/revenue', { aggregated: true }],
+  });
+
+  const isLoading = tenantsLoading || revenueLoading;
+
+  const activeTenants = tenants?.filter(t => t.status === 'active') || [];
+  const currentMonth = revenueAggregates?.[revenueAggregates.length - 1];
+  const lastMonth = revenueAggregates?.[revenueAggregates.length - 2];
+  
+  const mrr = currentMonth?.totalRevenue || 0;
+  const mrrChange = lastMonth?.totalRevenue 
+    ? (((mrr - lastMonth.totalRevenue) / lastMonth.totalRevenue) * 100).toFixed(1)
+    : '0';
+  
+  const ytdRevenue = revenueAggregates?.reduce((sum, month) => sum + (month.totalRevenue || 0), 0) || 0;
+  const activeSubscriptions = currentMonth?.activeSubscriptions || activeTenants.length;
+  const arpu = activeSubscriptions > 0 ? (mrr / activeSubscriptions).toFixed(0) : '0';
+
+  const mrrChangeType: "positive" | "negative" = parseFloat(mrrChange) >= 0 ? "positive" : "negative";
+
   const revenueMetrics = [
     {
       title: "Monthly Recurring Revenue",
-      value: "$12,450",
-      change: "+12.5%",
-      changeType: "positive" as const,
+      value: `$${mrr.toFixed(0)}`,
+      change: `${mrrChange}%`,
+      changeType: mrrChangeType,
       icon: DollarSign,
     },
     {
       title: "Total Revenue (YTD)",
-      value: "$89,200",
-      change: "+23.1%",
+      value: `$${ytdRevenue.toFixed(0)}`,
+      change: `${revenueAggregates?.length || 0} months`,
       changeType: "positive" as const,
       icon: TrendingUp,
     },
     {
       title: "Active Subscriptions",
-      value: "47",
-      change: "+8",
+      value: activeSubscriptions.toString(),
+      change: `${currentMonth?.newSubscriptions || 0} new`,
       changeType: "positive" as const,
       icon: CreditCard,
     },
     {
       title: "Average Revenue Per User",
-      value: "$265",
-      change: "+5.2%",
-      changeType: "positive" as const,
+      value: `$${arpu}`,
+      change: "per month",
+      changeType: "neutral" as const,
       icon: Users,
     },
   ];
 
+  const planCounts = {
+    free: activeTenants.filter(t => t.plan === 'free').length,
+    starter: activeTenants.filter(t => t.plan === 'starter').length,
+    professional: activeTenants.filter(t => t.plan === 'professional').length,
+    enterprise: activeTenants.filter(t => t.plan === 'enterprise').length,
+  };
+
+  const planPricing = { free: 0, starter: 150, professional: 600, enterprise: 1275 };
+  const totalCount = Object.values(planCounts).reduce((a, b) => a + b, 0);
+
   const planBreakdown = [
-    { plan: "Free", count: 15, revenue: "$0", percentage: 32 },
-    { plan: "Starter", count: 18, revenue: "$2,700", percentage: 38 },
-    { plan: "Professional", count: 12, revenue: "$7,200", percentage: 26 },
-    { plan: "Enterprise", count: 2, revenue: "$2,550", percentage: 4 },
+    { 
+      plan: "Free", 
+      count: planCounts.free, 
+      revenue: `$${planCounts.free * planPricing.free}`, 
+      percentage: totalCount > 0 ? Math.round((planCounts.free / totalCount) * 100) : 0 
+    },
+    { 
+      plan: "Starter", 
+      count: planCounts.starter, 
+      revenue: `$${planCounts.starter * planPricing.starter}`, 
+      percentage: totalCount > 0 ? Math.round((planCounts.starter / totalCount) * 100) : 0 
+    },
+    { 
+      plan: "Professional", 
+      count: planCounts.professional, 
+      revenue: `$${planCounts.professional * planPricing.professional}`, 
+      percentage: totalCount > 0 ? Math.round((planCounts.professional / totalCount) * 100) : 0 
+    },
+    { 
+      plan: "Enterprise", 
+      count: planCounts.enterprise, 
+      revenue: `$${planCounts.enterprise * planPricing.enterprise}`, 
+      percentage: totalCount > 0 ? Math.round((planCounts.enterprise / totalCount) * 100) : 0 
+    },
   ];
+
+  const revenueChartData = (revenueAggregates || []).map((month: any) => ({
+    month: new Date(month.month).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+    revenue: month.totalRevenue || 0,
+    subscriptions: month.activeSubscriptions || 0,
+  }));
 
   return (
     <div className="flex-1 overflow-auto">
@@ -55,13 +119,25 @@ export default function Finance() {
       />
 
       <div className="p-6 space-y-6">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {revenueMetrics.map((metric) => (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading revenue data...</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {revenueMetrics.map((metric) => (
             <Card key={metric.title} data-testid={`card-${metric.title.toLowerCase().replace(/\s+/g, '-')}`}>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <metric.icon className="w-5 h-5 text-muted-foreground" />
-                  <Badge variant={metric.changeType === "positive" ? "secondary" : "destructive"} className={metric.changeType === "positive" ? "bg-success/10 text-success" : ""}>
+                  <Badge 
+                    variant={metric.changeType === "positive" ? "secondary" : metric.changeType === "negative" ? "destructive" : "secondary"} 
+                    className={metric.changeType === "positive" ? "bg-success/10 text-success" : ""}
+                  >
                     {metric.change}
                   </Badge>
                 </div>
@@ -74,9 +150,22 @@ export default function Finance() {
           ))}
         </div>
 
+        {revenueChartData.length > 0 && <RevenueChart data={revenueChartData} />}
+
         <Card data-testid="card-plan-breakdown">
-          <CardHeader>
-            <CardTitle>Revenue by Plan</CardTitle>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle>Revenue by Plan</CardTitle>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportToCSV(planBreakdown, 'plan-breakdown')}
+              data-testid="button-export-plan-breakdown"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export CSV
+            </Button>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -104,42 +193,56 @@ export default function Finance() {
         </Card>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <Card data-testid="card-payment-methods">
+          <Card data-testid="card-subscriber-growth">
             <CardHeader>
-              <CardTitle>Payment Methods</CardTitle>
+              <CardTitle>Subscriber Growth</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm">Credit Card</span>
-                  <span className="font-medium">42 (89%)</span>
+                  <span className="text-sm">New This Month</span>
+                  <span className="font-medium text-success">{currentMonth?.newSubscriptions || 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm">PayPal</span>
-                  <span className="font-medium">5 (11%)</span>
+                  <span className="text-sm">Canceled This Month</span>
+                  <span className="font-medium text-destructive">{currentMonth?.canceledSubscriptions || 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Net Growth</span>
+                  <span className="font-medium">
+                    {(currentMonth?.newSubscriptions || 0) - (currentMonth?.canceledSubscriptions || 0)}
+                  </span>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card data-testid="card-churn-rate">
+          <Card data-testid="card-revenue-metrics">
             <CardHeader>
-              <CardTitle>Churn & Retention</CardTitle>
+              <CardTitle>Revenue Metrics</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm">Monthly Churn Rate</span>
-                  <span className="font-medium text-success">2.3%</span>
+                  <span className="text-sm">Average Order Value</span>
+                  <span className="font-medium">${arpu}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm">Customer Lifetime Value</span>
-                  <span className="font-medium">$3,180</span>
+                  <span className="text-sm">Total Active Plans</span>
+                  <span className="font-medium">{activeTenants.length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Revenue Growth Rate</span>
+                  <span className={`font-medium ${parseFloat(mrrChange) >= 0 ? 'text-success' : 'text-destructive'}`}>
+                    {mrrChange}%
+                  </span>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

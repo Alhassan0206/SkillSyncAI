@@ -146,8 +146,8 @@ export interface IStorage {
   getRevenueTransactions(tenantId: string, startDate?: Date, endDate?: Date): Promise<schema.RevenueTransaction[]>;
   createRevenueTransaction(transaction: schema.InsertRevenueTransaction): Promise<schema.RevenueTransaction>;
   
-  getRevenueAggregates(tenantId: string, startMonth?: Date, endMonth?: Date): Promise<schema.RevenueAggregatesMonthly[]>;
-  upsertRevenueAggregate(aggregate: schema.InsertRevenueAggregatesMonthly): Promise<schema.RevenueAggregatesMonthly>;
+  getRevenueAggregates(tenantId: string, startMonth?: Date, endMonth?: Date): Promise<schema.RevenueAggregateMonthly[]>;
+  upsertRevenueAggregate(aggregate: schema.InsertRevenueAggregateMonthly): Promise<schema.RevenueAggregateMonthly>;
 }
 
 export class DbStorage implements IStorage {
@@ -991,7 +991,7 @@ export class DbStorage implements IStorage {
     return created;
   }
 
-  async getRevenueAggregates(tenantId: string, startMonth?: Date, endMonth?: Date): Promise<schema.RevenueAggregatesMonthly[]> {
+  async getRevenueAggregates(tenantId: string, startMonth?: Date, endMonth?: Date): Promise<schema.RevenueAggregateMonthly[]> {
     const { and, gte, lte } = await import("drizzle-orm");
     const conditions = [eq(schema.revenueAggregatesMonthly.tenantId, tenantId)];
     
@@ -1005,7 +1005,7 @@ export class DbStorage implements IStorage {
     return db.select().from(schema.revenueAggregatesMonthly).where(and(...conditions)).orderBy(schema.revenueAggregatesMonthly.month);
   }
 
-  async upsertRevenueAggregate(aggregate: schema.InsertRevenueAggregatesMonthly): Promise<schema.RevenueAggregatesMonthly> {
+  async upsertRevenueAggregate(aggregate: schema.InsertRevenueAggregateMonthly): Promise<schema.RevenueAggregateMonthly> {
     const [result] = await db.insert(schema.revenueAggregatesMonthly)
       .values(aggregate)
       .onConflictDoUpdate({
