@@ -9,6 +9,8 @@ import AdminFinance from "./Admin/Finance";
 import AdminAuditLogs from "./Admin/AuditLogs";
 import AdminFeatureFlags from "./Admin/FeatureFlags";
 import AdminSettings from "./Admin/Settings";
+import AdminSupportTickets from "./Admin/SupportTickets";
+import AdminJobQueues from "./Admin/JobQueues";
 
 export default function AdminDashboard() {
   const style = {
@@ -24,9 +26,11 @@ export default function AdminDashboard() {
           <Route path="/admin/tenants" component={AdminTenants} />
           <Route path="/admin/users" component={AdminUsers} />
           <Route path="/admin/health" component={AdminSystemHealth} />
+          <Route path="/admin/queues" component={AdminJobQueues} />
           <Route path="/admin/finance" component={AdminFinance} />
           <Route path="/admin/logs" component={AdminAuditLogs} />
           <Route path="/admin/flags" component={AdminFeatureFlags} />
+          <Route path="/admin/support" component={AdminSupportTickets} />
           <Route path="/admin/settings" component={AdminSettings} />
           <Route component={AdminOverview} />
         </Switch>

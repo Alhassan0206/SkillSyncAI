@@ -153,7 +153,7 @@ export default function Pricing() {
               </Link>
             </div>
 
-            <a href="/api/login">
+            <a href="/login">
               <Button variant="default" size="default" data-testid="button-login">
                 Get Started
               </Button>
@@ -202,7 +202,7 @@ export default function Pricing() {
                   {plan.description}
                 </p>
 
-                <a href={plan.name === "Enterprise" ? "/contact" : "/api/login"}>
+                <a href={plan.name === "Enterprise" ? "/contact" : "/login"}>
                   <Button
                     variant={plan.highlight ? "secondary" : "default"}
                     className="w-full mb-6"

@@ -12,6 +12,7 @@ import ThemeToggle from "./ThemeToggle";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import Notifications from "./Notifications";
 import { useLocation } from "wouter";
+import { apiRequest, clearCsrfToken } from "@/lib/queryClient";
 
 interface DashboardHeaderProps {
   userName?: string;
@@ -23,12 +24,12 @@ interface DashboardHeaderProps {
   rolePrefix?: string;
 }
 
-export default function DashboardHeader({ 
-  userName, 
-  userRole, 
-  notificationCount = 0, 
-  title, 
-  subtitle, 
+export default function DashboardHeader({
+  userName,
+  userRole,
+  notificationCount = 0,
+  title,
+  subtitle,
   action,
   rolePrefix = "/dashboard"
 }: DashboardHeaderProps) {
@@ -36,10 +37,12 @@ export default function DashboardHeader({
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await apiRequest('POST', '/api/auth/logout');
+      clearCsrfToken();
       window.location.href = '/';
     } catch (error) {
       console.error('Logout failed:', error);
+      clearCsrfToken();
       window.location.href = '/';
     }
   };

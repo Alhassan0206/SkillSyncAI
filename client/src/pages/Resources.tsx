@@ -120,7 +120,7 @@ export default function Resources() {
               </Link>
             </div>
 
-            <a href="/api/login">
+            <a href="/login">
               <Button variant="default" size="default" data-testid="button-login">
                 Get Started
               </Button>
@@ -218,7 +218,7 @@ export default function Resources() {
               <p className="text-xl mb-6 opacity-90">
                 Join thousands of companies transforming their hiring with AI
               </p>
-              <a href="/api/login">
+              <a href="/login">
                 <Button variant="secondary" size="lg" data-testid="button-cta">
                   Start Free Trial
                 </Button>

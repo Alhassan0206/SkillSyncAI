@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useState, useEffect } from "react";
 import DashboardHeader from "@/components/DashboardHeader";
+import CandidateComparison from "@/components/CandidateComparison";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -80,6 +81,13 @@ export default function EmployerCandidates() {
                 data-testid="input-search-candidates"
               />
             </div>
+            {allApps.length >= 2 && (
+              <CandidateComparison
+                applications={allApps}
+                getJobSeeker={getJobSeeker}
+                getJobTitle={getJobTitle}
+              />
+            )}
           </div>
 
           <Tabs defaultValue="all" className="space-y-6">

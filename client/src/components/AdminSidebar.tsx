@@ -8,7 +8,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Home, Building2, Users, Activity, DollarSign, FileText, Settings, Flag } from "lucide-react";
+import { Home, Building2, Users, Activity, DollarSign, FileText, Settings, Flag, Ticket, ListTodo } from "lucide-react";
 import { useLocation, Link } from "wouter";
 
 export default function AdminSidebar() {
@@ -19,7 +19,9 @@ export default function AdminSidebar() {
     { title: "Tenants", icon: Building2, url: "/admin/tenants" },
     { title: "Users", icon: Users, url: "/admin/users" },
     { title: "System Health", icon: Activity, url: "/admin/health" },
+    { title: "Job Queues", icon: ListTodo, url: "/admin/queues" },
     { title: "Finance", icon: DollarSign, url: "/admin/finance" },
+    { title: "Support Tickets", icon: Ticket, url: "/admin/support" },
     { title: "Audit Logs", icon: FileText, url: "/admin/logs" },
     { title: "Feature Flags", icon: Flag, url: "/admin/flags" },
     { title: "Settings", icon: Settings, url: "/admin/settings" },

@@ -41,7 +41,7 @@ export default function Landing() {
               <a href="/contact" className="text-sm font-medium" data-testid="link-contact">Contact</a>
             </div>
 
-            <a href="/api/login">
+            <a href="/login">
               <Button variant="default" size="default" data-testid="button-login">
                 Get Started
               </Button>
@@ -73,7 +73,7 @@ export default function Landing() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a href="/api/login">
+            <a href="/login">
               <Button size="lg" variant="default" className="text-base px-8" data-testid="button-hero-signup">
                 Get Started Free
                 <ArrowRight className="ml-2 w-5 h-5" />
@@ -119,7 +119,7 @@ export default function Landing() {
           <p className="text-xl mb-8 opacity-90">
             Join thousands using SkillSync AI to find the perfect talent match
           </p>
-          <a href="/api/login">
+          <a href="/login">
             <Button size="lg" variant="secondary" className="text-base px-8" data-testid="button-cta-signup">
               Get Started Free
             </Button>

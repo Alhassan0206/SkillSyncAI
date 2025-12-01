@@ -6,6 +6,7 @@ import { Link } from "wouter";
 import { Mail, Phone, MapPin, MessageSquare } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import MarketingLayout from "@/components/MarketingLayout";
 
 export default function Contact() {
   const { toast } = useToast();
@@ -22,20 +23,45 @@ export default function Contact() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    setTimeout(() => {
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: "Message Sent!",
+          description: data.message || "We'll get back to you within 24 hours.",
+        });
+        setFormData({
+          name: "",
+          email: "",
+          company: "",
+          subject: "",
+          message: "",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: data.message || "Failed to send message. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
       toast({
-        title: "Message Sent!",
-        description: "We'll get back to you within 24 hours.",
+        title: "Error",
+        description: "Failed to send message. Please try again later.",
+        variant: "destructive",
       });
-      setFormData({
-        name: "",
-        email: "",
-        company: "",
-        subject: "",
-        message: "",
-      });
+    } finally {
       setIsSubmitting(false);
-    }, 1000);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -73,47 +99,8 @@ export default function Contact() {
   ];
 
   return (
-    <div className="min-h-screen bg-background">
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex items-center justify-between h-16">
-            <Link href="/">
-              <a className="flex items-center gap-2" data-testid="link-home">
-                <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-bold">
-                  S
-                </div>
-                <span className="font-display font-semibold text-lg">SkillSync AI</span>
-              </a>
-            </Link>
-
-            <div className="hidden md:flex items-center gap-6">
-              <Link href="/features">
-                <a className="text-sm font-medium" data-testid="link-features">Features</a>
-              </Link>
-              <Link href="/pricing">
-                <a className="text-sm font-medium" data-testid="link-pricing">Pricing</a>
-              </Link>
-              <Link href="/resources">
-                <a className="text-sm font-medium" data-testid="link-resources">Resources</a>
-              </Link>
-              <Link href="/about">
-                <a className="text-sm font-medium" data-testid="link-about">About</a>
-              </Link>
-              <Link href="/contact">
-                <a className="text-sm font-medium" data-testid="link-contact">Contact</a>
-              </Link>
-            </div>
-
-            <a href="/api/login">
-              <Button variant="default" size="default" data-testid="button-login">
-                Get Started
-              </Button>
-            </a>
-          </div>
-        </div>
-      </nav>
-
-      <section className="pt-32 pb-16 px-6">
+    <MarketingLayout>
+      <section className="pt-16 pb-16 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h1 className="font-display text-5xl md:text-6xl font-bold mb-6">
@@ -254,20 +241,6 @@ export default function Contact() {
           </div>
         </div>
       </section>
-
-      <footer className="py-12 px-6 border-t bg-background">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-bold">
-              S
-            </div>
-            <span className="font-display font-semibold text-lg">SkillSync AI</span>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            &copy; 2024 SkillSync AI. All rights reserved.
-          </p>
-        </div>
-      </footer>
-    </div>
+    </MarketingLayout>
   );
 }

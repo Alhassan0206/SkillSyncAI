@@ -17,19 +17,21 @@ export default function RoleSelection() {
       const response = await apiRequest('POST', '/api/profile/role', { role });
       return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
+    onSuccess: async (data, variables) => {
       toast({
         title: "Role set successfully",
         description: "Redirecting to your dashboard...",
       });
-      setTimeout(() => {
-        if (selectedRole === 'employer') {
-          setLocation('/employer');
-        } else {
-          setLocation('/dashboard');
-        }
-      }, 500);
+      // Wait for the user data to be refetched before redirecting
+      await queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
+      await queryClient.refetchQueries({ queryKey: ['/api/auth/user'] });
+
+      // Use the role from the mutation variables to ensure correct redirect
+      if (variables === 'employer') {
+        setLocation('/employer');
+      } else {
+        setLocation('/dashboard');
+      }
     },
     onError: (error) => {
       toast({

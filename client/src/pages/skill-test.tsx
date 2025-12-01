@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, XCircle, Trophy, ArrowRight } from "lucide-react";
+import { CheckCircle2, XCircle, Trophy, ArrowRight, Clock, AlertTriangle } from "lucide-react";
 import { useLocation } from "wouter";
 
 interface Question {
@@ -24,6 +24,8 @@ interface TestState {
   currentIndex: number;
   userAnswers: string[];
   showResults: boolean;
+  startTime: number;
+  timeLimit: number; // in seconds
 }
 
 export default function SkillTest() {
@@ -32,11 +34,92 @@ export default function SkillTest() {
   const [testState, setTestState] = useState<TestState | null>(null);
   const [selectedAnswer, setSelectedAnswer] = useState<string>("");
   const [skill, setSkill] = useState("");
+  const [timeRemaining, setTimeRemaining] = useState<number>(0);
+  const [timedMode, setTimedMode] = useState(true);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Timer effect
+  useEffect(() => {
+    if (testState && !testState.showResults && timedMode) {
+      const elapsed = Math.floor((Date.now() - testState.startTime) / 1000);
+      const remaining = Math.max(0, testState.timeLimit - elapsed);
+      setTimeRemaining(remaining);
+
+      timerRef.current = setInterval(() => {
+        const newElapsed = Math.floor((Date.now() - testState.startTime) / 1000);
+        const newRemaining = Math.max(0, testState.timeLimit - newElapsed);
+        setTimeRemaining(newRemaining);
+
+        if (newRemaining <= 0) {
+          // Auto-submit when time runs out
+          handleTimeUp();
+        }
+      }, 1000);
+
+      return () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+      };
+    }
+  }, [testState?.startTime, testState?.showResults, timedMode]);
+
+  const handleTimeUp = () => {
+    if (!testState || testState.showResults) return;
+
+    toast({
+      title: "Time's up!",
+      description: "Your test has been automatically submitted.",
+      variant: "destructive"
+    });
+
+    // Submit with current answers
+    const finalAnswers = [...testState.userAnswers];
+    // Fill remaining with empty strings
+    while (finalAnswers.length < testState.questions.length) {
+      finalAnswers.push("");
+    }
+
+    const correctCount = testState.questions.reduce((count, q, index) => {
+      return count + (finalAnswers[index] === q.correctAnswer ? 1 : 0);
+    }, 0);
+
+    const questionsWithAnswers = testState.questions.map((q, index) => ({
+      question: q.question,
+      userAnswer: finalAnswers[index] || "(No answer)",
+      correctAnswer: q.correctAnswer,
+      isCorrect: finalAnswers[index] === q.correctAnswer,
+    }));
+
+    const duration = Math.floor((Date.now() - testState.startTime) / 1000);
+
+    saveTestMutation.mutate({
+      skill: testState.skill,
+      testType: testState.testType,
+      score: correctCount,
+      maxScore: testState.questions.length,
+      duration,
+      questions: questionsWithAnswers,
+    });
+
+    setTestState({
+      ...testState,
+      userAnswers: finalAnswers,
+      showResults: true,
+    });
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const startTestMutation = useMutation({
-    mutationFn: (data: { skill: string; testType: string }) =>
-      apiRequest(`/api/job-seeker/skill-tests/${data.skill}/start`, "POST", { testType: data.testType }),
+    mutationFn: async (data: { skill: string; testType: string }) => {
+      const response = await apiRequest("POST", `/api/job-seeker/skill-tests/${data.skill}/start`, { testType: data.testType });
+      return response.json() as Promise<{ questions: Question[]; skill: string; testType: string }>;
+    },
     onSuccess: (data: { questions: Question[]; skill: string; testType: string }) => {
+      const timeLimit = timedMode ? data.questions.length * 60 : 0; // 1 minute per question
       setTestState({
         skill: data.skill,
         testType: data.testType,
@@ -44,7 +127,10 @@ export default function SkillTest() {
         currentIndex: 0,
         userAnswers: [],
         showResults: false,
+        startTime: Date.now(),
+        timeLimit,
       });
+      setTimeRemaining(timeLimit);
       toast({ title: "Test started! Good luck!" });
     },
     onError: (error: any) => {
@@ -98,12 +184,13 @@ export default function SkillTest() {
         isCorrect: newAnswers[index] === q.correctAnswer,
       }));
 
+      const duration = Math.floor((Date.now() - testState.startTime) / 1000);
       saveTestMutation.mutate({
         skill: testState.skill,
         testType: testState.testType,
         score: correctCount,
         maxScore: testState.questions.length,
-        duration: 0,
+        duration,
         questions: questionsWithAnswers,
       });
 
@@ -141,10 +228,32 @@ export default function SkillTest() {
                 placeholder="e.g., React, Python, SQL"
                 value={skill}
                 onChange={(e) => setSkill(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-3 py-2 border rounded-md dark:bg-background"
                 data-testid="input-skill-test"
               />
             </div>
+
+            {/* Timed Mode Toggle */}
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
+              <div className="flex items-center gap-3">
+                <Clock className="w-5 h-5 text-muted-foreground" />
+                <div>
+                  <p className="font-medium">Timed Mode</p>
+                  <p className="text-sm text-muted-foreground">1 minute per question</p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={timedMode}
+                  onChange={(e) => setTimedMode(e.target.checked)}
+                  className="sr-only peer"
+                  data-testid="checkbox-timed-mode"
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
+              </label>
+            </div>
+
             <Button
               onClick={handleStartTest}
               disabled={startTestMutation.isPending}
@@ -234,9 +343,27 @@ export default function SkillTest() {
 
   const currentQuestion = testState.questions[testState.currentIndex];
   const progress = ((testState.currentIndex + 1) / testState.questions.length) * 100;
+  const isLowTime = timedMode && timeRemaining > 0 && timeRemaining <= 60;
 
   return (
     <div className="container mx-auto p-6 max-w-2xl">
+      {/* Timer Bar */}
+      {timedMode && testState.timeLimit > 0 && (
+        <div className={`mb-4 p-3 rounded-lg flex items-center justify-between ${isLowTime ? 'bg-red-100 dark:bg-red-900/30 border border-red-300' : 'bg-muted'}`}>
+          <div className="flex items-center gap-2">
+            {isLowTime ? (
+              <AlertTriangle className="w-5 h-5 text-red-500 animate-pulse" />
+            ) : (
+              <Clock className="w-5 h-5 text-muted-foreground" />
+            )}
+            <span className={`font-mono text-lg font-bold ${isLowTime ? 'text-red-600 dark:text-red-400' : ''}`}>
+              {formatTime(timeRemaining)}
+            </span>
+          </div>
+          <span className="text-sm text-muted-foreground">Time Remaining</span>
+        </div>
+      )}
+
       <Card>
         <CardHeader>
           <div className="space-y-2">

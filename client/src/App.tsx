@@ -6,15 +6,20 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
+import Login from "@/pages/Login";
 import Features from "@/pages/Features";
 import Pricing from "@/pages/Pricing";
 import About from "@/pages/About";
 import Contact from "@/pages/Contact";
 import Resources from "@/pages/Resources";
+import FAQ from "@/pages/FAQ";
+import Terms from "@/pages/Terms";
+import Privacy from "@/pages/Privacy";
 import RoleSelection from "@/pages/RoleSelection";
 import JobSeekerDashboard from "@/pages/JobSeekerDashboard";
 import EmployerDashboard from "@/pages/EmployerDashboard";
 import AdminDashboard from "@/pages/AdminDashboard";
+import VerifySkills from "@/pages/VerifySkills";
 
 function Router() {
   const { isAuthenticated, isLoading, user } = useAuth() as { 
@@ -38,11 +43,16 @@ function Router() {
     return (
       <Switch>
         <Route path="/" component={Landing} />
+        <Route path="/login" component={Login} />
         <Route path="/features" component={Features} />
         <Route path="/pricing" component={Pricing} />
         <Route path="/about" component={About} />
         <Route path="/contact" component={Contact} />
         <Route path="/resources" component={Resources} />
+        <Route path="/faq" component={FAQ} />
+        <Route path="/terms" component={Terms} />
+        <Route path="/privacy" component={Privacy} />
+        <Route path="/verify/skills/:jobSeekerId" component={VerifySkills} />
         <Route component={Landing} />
       </Switch>
     );
@@ -56,7 +66,9 @@ function Router() {
     return (
       <Switch>
         <Route path="/" component={AdminDashboard} />
+        <Route path="/admin" component={AdminDashboard} />
         <Route path="/admin/:rest*" component={AdminDashboard} />
+        <Route path="/verify/skills/:jobSeekerId" component={VerifySkills} />
         <Route component={NotFound} />
       </Switch>
     );
@@ -66,7 +78,9 @@ function Router() {
     return (
       <Switch>
         <Route path="/" component={EmployerDashboard} />
+        <Route path="/employer" component={EmployerDashboard} />
         <Route path="/employer/:rest*" component={EmployerDashboard} />
+        <Route path="/verify/skills/:jobSeekerId" component={VerifySkills} />
         <Route component={NotFound} />
       </Switch>
     );
@@ -75,7 +89,9 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={JobSeekerDashboard} />
+      <Route path="/dashboard" component={JobSeekerDashboard} />
       <Route path="/dashboard/:rest*" component={JobSeekerDashboard} />
+      <Route path="/verify/skills/:jobSeekerId" component={VerifySkills} />
       <Route component={NotFound} />
     </Switch>
   );

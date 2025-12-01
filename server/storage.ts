@@ -1,6 +1,6 @@
 import { db } from "./db";
 import * as schema from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<schema.User | undefined>;
@@ -8,6 +8,8 @@ export interface IStorage {
   getAllUsers(): Promise<schema.User[]>;
   createUser(user: schema.InsertUser): Promise<schema.User>;
   upsertUser(user: schema.UpsertUser): Promise<schema.User>;
+  updateUser(id: string, data: Partial<schema.InsertUser>): Promise<schema.User>;
+  deleteUser(id: string): Promise<void>;
   
   getJobSeeker(userId: string): Promise<schema.JobSeeker | undefined>;
   getJobSeekerById(id: string): Promise<schema.JobSeeker | undefined>;
@@ -50,7 +52,8 @@ export interface IStorage {
   getTenants(): Promise<schema.Tenant[]>;
   createTenant(tenant: schema.InsertTenant): Promise<schema.Tenant>;
   updateTenant(id: string, data: Partial<schema.InsertTenant>): Promise<schema.Tenant>;
-  
+  deleteTenant(id: string): Promise<void>;
+
   getTeamInvitations(tenantId: string): Promise<schema.TeamInvitation[]>;
   getTeamInvitationByToken(token: string): Promise<schema.TeamInvitation | undefined>;
   createTeamInvitation(invitation: schema.InsertTeamInvitation): Promise<schema.TeamInvitation>;
@@ -148,6 +151,67 @@ export interface IStorage {
   
   getRevenueAggregates(tenantId: string, startMonth?: Date, endMonth?: Date): Promise<schema.RevenueAggregateMonthly[]>;
   upsertRevenueAggregate(aggregate: schema.InsertRevenueAggregateMonthly): Promise<schema.RevenueAggregateMonthly>;
+
+  // Contact Submissions
+  createContactSubmission(submission: schema.InsertContactSubmission & { ipAddress?: string; userAgent?: string }): Promise<schema.ContactSubmission>;
+  getContactSubmissions(status?: string): Promise<schema.ContactSubmission[]>;
+  getContactSubmissionById(id: string): Promise<schema.ContactSubmission | undefined>;
+  updateContactSubmission(id: string, data: Partial<schema.ContactSubmission>): Promise<schema.ContactSubmission>;
+
+  // Feature Flags
+  getFeatureFlags(): Promise<schema.FeatureFlag[]>;
+  getFeatureFlagByKey(key: string): Promise<schema.FeatureFlag | undefined>;
+  createFeatureFlag(flag: schema.InsertFeatureFlag): Promise<schema.FeatureFlag>;
+  updateFeatureFlag(id: string, data: Partial<schema.InsertFeatureFlag>): Promise<schema.FeatureFlag>;
+  deleteFeatureFlag(id: string): Promise<void>;
+
+  // Audit Logs
+  getAuditLogs(filters?: { userId?: string; tenantId?: string; action?: string; resource?: string; startDate?: Date; endDate?: Date; limit?: number; offset?: number }): Promise<schema.AuditLog[]>;
+  createAuditLog(log: schema.InsertAuditLog): Promise<schema.AuditLog>;
+
+  // Email Preferences
+  getEmailPreferences(userId: string): Promise<schema.EmailPreferences | undefined>;
+  getEmailPreferencesByToken(token: string): Promise<schema.EmailPreferences | undefined>;
+  createEmailPreferences(prefs: schema.InsertEmailPreferences): Promise<schema.EmailPreferences>;
+  updateEmailPreferences(userId: string, prefs: Partial<schema.InsertEmailPreferences>): Promise<schema.EmailPreferences>;
+
+  // Email Logs
+  createEmailLog(log: schema.InsertEmailLog): Promise<schema.EmailLog>;
+  getEmailLogs(filters?: { userId?: string; emailType?: string; status?: string; limit?: number }): Promise<schema.EmailLog[]>;
+  updateEmailLog(id: string, data: Partial<schema.EmailLog>): Promise<void>;
+
+  // Analytics Helpers
+  getApplicationCount(filters?: { startDate?: Date; tenantId?: string }): Promise<number>;
+  getJobCount(filters?: { startDate?: Date; tenantId?: string }): Promise<number>;
+  getUserCount(filters?: { startDate?: Date }): Promise<number>;
+  getMatchCount(filters?: { startDate?: Date; tenantId?: string }): Promise<number>;
+
+  // Webhook Subscriptions
+  getWebhookSubscriptions(tenantId: string): Promise<schema.WebhookSubscription[]>;
+  getWebhookSubscriptionById(id: string): Promise<schema.WebhookSubscription | undefined>;
+  createWebhookSubscription(subscription: schema.InsertWebhookSubscription): Promise<schema.WebhookSubscription>;
+  updateWebhookSubscription(id: string, data: Partial<schema.InsertWebhookSubscription>): Promise<schema.WebhookSubscription>;
+  deleteWebhookSubscription(id: string): Promise<void>;
+
+  // Webhook Delivery Attempts
+  getWebhookDeliveryAttempts(subscriptionId: string, limit?: number): Promise<schema.WebhookDeliveryAttempt[]>;
+  createWebhookDeliveryAttempt(attempt: schema.InsertWebhookDeliveryAttempt): Promise<schema.WebhookDeliveryAttempt>;
+  updateWebhookDeliveryAttempt(id: string, data: Partial<schema.InsertWebhookDeliveryAttempt>): Promise<schema.WebhookDeliveryAttempt>;
+
+  // Notification Preferences
+  getNotificationPreferences(userId: string): Promise<schema.NotificationPreference[]>;
+  getNotificationPreferenceByChannel(userId: string, channel: string): Promise<schema.NotificationPreference | undefined>;
+  createNotificationPreference(pref: schema.InsertNotificationPreference): Promise<schema.NotificationPreference>;
+  updateNotificationPreference(id: string, data: Partial<schema.InsertNotificationPreference>): Promise<schema.NotificationPreference>;
+  upsertNotificationPreference(userId: string, channel: string, data: Partial<schema.InsertNotificationPreference>): Promise<schema.NotificationPreference>;
+
+  // Usage Tracking
+  recordUsage(record: schema.InsertUsageRecord): Promise<schema.UsageRecord>;
+  getUsageRecords(userId: string, featureType?: string, periodStart?: Date, periodEnd?: Date): Promise<schema.UsageRecord[]>;
+  getUsageAggregate(userId: string, featureType: string, periodMonth: string): Promise<schema.UsageAggregate | undefined>;
+  upsertUsageAggregate(userId: string, tenantId: string | null, featureType: string, periodMonth: string, increment: number, limit?: number): Promise<schema.UsageAggregate>;
+  getUserUsageSummary(userId: string, periodMonth: string): Promise<schema.UsageAggregate[]>;
+  getTenantUsageSummary(tenantId: string, periodMonth: string): Promise<schema.UsageAggregate[]>;
 }
 
 export class DbStorage implements IStorage {
@@ -183,6 +247,18 @@ export class DbStorage implements IStorage {
       })
       .returning();
     return user;
+  }
+
+  async updateUser(id: string, data: Partial<schema.InsertUser>): Promise<schema.User> {
+    const [user] = await db.update(schema.users)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.users.id, id))
+      .returning();
+    return user;
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    await db.delete(schema.users).where(eq(schema.users.id, id));
   }
 
   async getJobSeeker(userId: string): Promise<schema.JobSeeker | undefined> {
@@ -437,6 +513,10 @@ export class DbStorage implements IStorage {
       .where(eq(schema.tenants.id, id))
       .returning();
     return tenant;
+  }
+
+  async deleteTenant(id: string): Promise<void> {
+    await db.delete(schema.tenants).where(eq(schema.tenants.id, id));
   }
 
   async getTeamInvitations(tenantId: string): Promise<schema.TeamInvitation[]> {
@@ -757,13 +837,14 @@ export class DbStorage implements IStorage {
   }
 
   async createInterview(interview: schema.InsertInterview): Promise<schema.Interview> {
-    const [created] = await db.insert(schema.interviews).values(interview).returning();
+    const [created] = await db.insert(schema.interviews).values(interview as typeof schema.interviews.$inferInsert).returning();
     return created;
   }
 
   async updateInterview(id: string, data: Partial<schema.InsertInterview>): Promise<schema.Interview> {
+    const updateData = { ...data, updatedAt: new Date() };
     const [updated] = await db.update(schema.interviews)
-      .set({ ...data, updatedAt: new Date() })
+      .set(updateData as Partial<typeof schema.interviews.$inferInsert>)
       .where(eq(schema.interviews.id, id))
       .returning();
     return updated;
@@ -837,13 +918,14 @@ export class DbStorage implements IStorage {
   }
 
   async createIntegrationConfig(config: schema.InsertIntegrationConfig): Promise<schema.IntegrationConfig> {
-    const [created] = await db.insert(schema.integrationConfigs).values(config).returning();
+    const [created] = await db.insert(schema.integrationConfigs).values(config as typeof schema.integrationConfigs.$inferInsert).returning();
     return created;
   }
 
   async updateIntegrationConfig(id: string, data: Partial<schema.InsertIntegrationConfig>): Promise<schema.IntegrationConfig> {
+    const updateData = { ...data, updatedAt: new Date() };
     const [updated] = await db.update(schema.integrationConfigs)
-      .set({ ...data, updatedAt: new Date() })
+      .set(updateData as Partial<typeof schema.integrationConfigs.$inferInsert>)
       .where(eq(schema.integrationConfigs.id, id))
       .returning();
     return updated;
@@ -854,7 +936,7 @@ export class DbStorage implements IStorage {
   }
 
   async trackAnalyticsEvent(event: schema.InsertAnalyticsEvent): Promise<schema.AnalyticsEvent> {
-    const [created] = await db.insert(schema.analyticsEvents).values(event).returning();
+    const [created] = await db.insert(schema.analyticsEvents).values(event as typeof schema.analyticsEvents.$inferInsert).returning();
     return created;
   }
 
@@ -886,8 +968,12 @@ export class DbStorage implements IStorage {
       return [];
     }
     
-    const employer = await db.select().from(schema.employers).where(eq(schema.employers.id, job.employerId)).limit(1);
-    if (!employer[0] || employer[0].tenantId !== tenantId) {
+    const employerWithUser = await db.select({ employer: schema.employers, user: schema.users })
+      .from(schema.employers)
+      .innerJoin(schema.users, eq(schema.employers.userId, schema.users.id))
+      .where(eq(schema.employers.id, job.employerId))
+      .limit(1);
+    if (!employerWithUser[0] || employerWithUser[0].user.tenantId !== tenantId) {
       return [];
     }
     
@@ -941,11 +1027,12 @@ export class DbStorage implements IStorage {
 
   async getTimeToHireRecords(tenantId: string, jobId?: string, startDate?: Date, endDate?: Date): Promise<schema.TimeToHireRecord[]> {
     const { and, gte, lte, inArray } = await import("drizzle-orm");
-    
+
     const tenantJobs = await db.select({ id: schema.jobs.id })
       .from(schema.jobs)
       .innerJoin(schema.employers, eq(schema.jobs.employerId, schema.employers.id))
-      .where(eq(schema.employers.tenantId, tenantId));
+      .innerJoin(schema.users, eq(schema.employers.userId, schema.users.id))
+      .where(eq(schema.users.tenantId, tenantId));
     
     const tenantJobIds = tenantJobs.map(j => j.id);
     if (tenantJobIds.length === 0) {
@@ -968,26 +1055,26 @@ export class DbStorage implements IStorage {
   }
 
   async createTimeToHireRecord(record: schema.InsertTimeToHireRecord): Promise<schema.TimeToHireRecord> {
-    const [created] = await db.insert(schema.timeToHireRecords).values(record).returning();
+    const [created] = await db.insert(schema.timeToHireRecords).values(record as typeof schema.timeToHireRecords.$inferInsert).returning();
     return created;
   }
 
   async getRevenueTransactions(tenantId: string, startDate?: Date, endDate?: Date): Promise<schema.RevenueTransaction[]> {
     const { and, gte, lte } = await import("drizzle-orm");
     const conditions = [eq(schema.revenueTransactions.tenantId, tenantId)];
-    
+
     if (startDate) {
       conditions.push(gte(schema.revenueTransactions.date, startDate));
     }
     if (endDate) {
       conditions.push(lte(schema.revenueTransactions.date, endDate));
     }
-    
+
     return db.select().from(schema.revenueTransactions).where(and(...conditions)).orderBy(schema.revenueTransactions.date);
   }
 
   async createRevenueTransaction(transaction: schema.InsertRevenueTransaction): Promise<schema.RevenueTransaction> {
-    const [created] = await db.insert(schema.revenueTransactions).values(transaction).returning();
+    const [created] = await db.insert(schema.revenueTransactions).values(transaction as typeof schema.revenueTransactions.$inferInsert).returning();
     return created;
   }
 
@@ -1017,6 +1104,365 @@ export class DbStorage implements IStorage {
       })
       .returning();
     return result;
+  }
+
+  // Contact Submissions
+  async createContactSubmission(submission: schema.InsertContactSubmission & { ipAddress?: string; userAgent?: string }): Promise<schema.ContactSubmission> {
+    const [result] = await db.insert(schema.contactSubmissions).values(submission).returning();
+    return result;
+  }
+
+  async getContactSubmissions(status?: string): Promise<schema.ContactSubmission[]> {
+    const { desc } = await import("drizzle-orm");
+    if (status) {
+      return db.select().from(schema.contactSubmissions).where(eq(schema.contactSubmissions.status, status)).orderBy(desc(schema.contactSubmissions.createdAt));
+    }
+    return db.select().from(schema.contactSubmissions).orderBy(desc(schema.contactSubmissions.createdAt));
+  }
+
+  async getContactSubmissionById(id: string): Promise<schema.ContactSubmission | undefined> {
+    const [result] = await db.select().from(schema.contactSubmissions).where(eq(schema.contactSubmissions.id, id));
+    return result;
+  }
+
+  async updateContactSubmission(id: string, data: Partial<schema.ContactSubmission>): Promise<schema.ContactSubmission> {
+    const [result] = await db.update(schema.contactSubmissions)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.contactSubmissions.id, id))
+      .returning();
+    return result;
+  }
+
+  // Feature Flags
+  async getFeatureFlags(): Promise<schema.FeatureFlag[]> {
+    return db.select().from(schema.featureFlags);
+  }
+
+  async getFeatureFlagByKey(key: string): Promise<schema.FeatureFlag | undefined> {
+    const [result] = await db.select().from(schema.featureFlags).where(eq(schema.featureFlags.key, key));
+    return result;
+  }
+
+  async createFeatureFlag(flag: schema.InsertFeatureFlag): Promise<schema.FeatureFlag> {
+    const [result] = await db.insert(schema.featureFlags).values(flag).returning();
+    return result;
+  }
+
+  async updateFeatureFlag(id: string, data: Partial<schema.InsertFeatureFlag>): Promise<schema.FeatureFlag> {
+    const [result] = await db.update(schema.featureFlags)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.featureFlags.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteFeatureFlag(id: string): Promise<void> {
+    await db.delete(schema.featureFlags).where(eq(schema.featureFlags.id, id));
+  }
+
+  // Audit Logs
+  async getAuditLogs(filters?: { userId?: string; tenantId?: string; action?: string; resource?: string; startDate?: Date; endDate?: Date; limit?: number; offset?: number }): Promise<schema.AuditLog[]> {
+    const { and, desc, gte, lte } = await import("drizzle-orm");
+    const conditions = [];
+
+    if (filters?.userId) {
+      conditions.push(eq(schema.auditLogs.userId, filters.userId));
+    }
+    if (filters?.tenantId) {
+      conditions.push(eq(schema.auditLogs.tenantId, filters.tenantId));
+    }
+    if (filters?.action) {
+      conditions.push(eq(schema.auditLogs.action, filters.action));
+    }
+    if (filters?.resource) {
+      conditions.push(eq(schema.auditLogs.resource, filters.resource));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(schema.auditLogs.createdAt, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(schema.auditLogs.createdAt, filters.endDate));
+    }
+
+    let query = db.select().from(schema.auditLogs);
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+    query = query.orderBy(desc(schema.auditLogs.createdAt)) as any;
+
+    if (filters?.limit) {
+      query = query.limit(filters.limit) as any;
+    }
+    if (filters?.offset) {
+      query = query.offset(filters.offset) as any;
+    }
+
+    return query;
+  }
+
+  async createAuditLog(log: schema.InsertAuditLog): Promise<schema.AuditLog> {
+    const [result] = await db.insert(schema.auditLogs).values(log).returning();
+    return result;
+  }
+
+  // Email Preferences
+  async getEmailPreferences(userId: string): Promise<schema.EmailPreferences | undefined> {
+    const [prefs] = await db.select().from(schema.emailPreferences).where(eq(schema.emailPreferences.userId, userId));
+    return prefs;
+  }
+
+  async getEmailPreferencesByToken(token: string): Promise<schema.EmailPreferences | undefined> {
+    const [prefs] = await db.select().from(schema.emailPreferences).where(eq(schema.emailPreferences.unsubscribeToken, token));
+    return prefs;
+  }
+
+  async createEmailPreferences(prefs: schema.InsertEmailPreferences): Promise<schema.EmailPreferences> {
+    const [result] = await db.insert(schema.emailPreferences).values(prefs).returning();
+    return result;
+  }
+
+  async updateEmailPreferences(userId: string, prefs: Partial<schema.InsertEmailPreferences>): Promise<schema.EmailPreferences> {
+    const [result] = await db.update(schema.emailPreferences)
+      .set({ ...prefs, updatedAt: new Date() })
+      .where(eq(schema.emailPreferences.userId, userId))
+      .returning();
+    return result;
+  }
+
+  // Email Logs
+  async createEmailLog(log: schema.InsertEmailLog): Promise<schema.EmailLog> {
+    const [result] = await db.insert(schema.emailLogs).values(log).returning();
+    return result;
+  }
+
+  async getEmailLogs(filters?: { userId?: string; emailType?: string; status?: string; limit?: number }): Promise<schema.EmailLog[]> {
+    let query = db.select().from(schema.emailLogs).orderBy(desc(schema.emailLogs.sentAt)) as any;
+
+    if (filters?.userId) {
+      query = query.where(eq(schema.emailLogs.userId, filters.userId));
+    }
+    if (filters?.emailType) {
+      query = query.where(eq(schema.emailLogs.emailType, filters.emailType));
+    }
+    if (filters?.status) {
+      query = query.where(eq(schema.emailLogs.status, filters.status));
+    }
+    if (filters?.limit) {
+      query = query.limit(filters.limit);
+    }
+
+    return query;
+  }
+
+  async updateEmailLog(id: string, data: Partial<schema.EmailLog>): Promise<void> {
+    await db.update(schema.emailLogs).set(data).where(eq(schema.emailLogs.id, id));
+  }
+
+  // Analytics helper methods
+  async getApplicationCount(filters?: { startDate?: Date; tenantId?: string }): Promise<number> {
+    // Return a simple count - in production would have proper date/tenant filtering
+    const result = await db.select().from(schema.applications);
+    return result.length;
+  }
+
+  async getJobCount(filters?: { startDate?: Date; tenantId?: string }): Promise<number> {
+    const result = await db.select().from(schema.jobs);
+    return result.length;
+  }
+
+  async getUserCount(filters?: { startDate?: Date }): Promise<number> {
+    const result = await db.select().from(schema.users);
+    return result.length;
+  }
+
+  async getMatchCount(filters?: { startDate?: Date; tenantId?: string }): Promise<number> {
+    const result = await db.select().from(schema.matches);
+    return result.length;
+  }
+
+  // Webhook Subscriptions
+  async getWebhookSubscriptions(tenantId: string): Promise<schema.WebhookSubscription[]> {
+    return db.select().from(schema.webhookSubscriptions)
+      .where(eq(schema.webhookSubscriptions.tenantId, tenantId))
+      .orderBy(desc(schema.webhookSubscriptions.createdAt));
+  }
+
+  async getWebhookSubscriptionById(id: string): Promise<schema.WebhookSubscription | undefined> {
+    const [subscription] = await db.select().from(schema.webhookSubscriptions)
+      .where(eq(schema.webhookSubscriptions.id, id));
+    return subscription;
+  }
+
+  async createWebhookSubscription(subscription: schema.InsertWebhookSubscription): Promise<schema.WebhookSubscription> {
+    const [created] = await db.insert(schema.webhookSubscriptions)
+      .values(subscription as typeof schema.webhookSubscriptions.$inferInsert)
+      .returning();
+    return created;
+  }
+
+  async updateWebhookSubscription(id: string, data: Partial<schema.InsertWebhookSubscription>): Promise<schema.WebhookSubscription> {
+    const updateData = { ...data, updatedAt: new Date() };
+    const [updated] = await db.update(schema.webhookSubscriptions)
+      .set(updateData as Partial<typeof schema.webhookSubscriptions.$inferInsert>)
+      .where(eq(schema.webhookSubscriptions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteWebhookSubscription(id: string): Promise<void> {
+    await db.delete(schema.webhookSubscriptions).where(eq(schema.webhookSubscriptions.id, id));
+  }
+
+  // Webhook Delivery Attempts
+  async getWebhookDeliveryAttempts(subscriptionId: string, limit = 50): Promise<schema.WebhookDeliveryAttempt[]> {
+    return db.select().from(schema.webhookDeliveryAttempts)
+      .where(eq(schema.webhookDeliveryAttempts.subscriptionId, subscriptionId))
+      .orderBy(desc(schema.webhookDeliveryAttempts.createdAt))
+      .limit(limit);
+  }
+
+  async createWebhookDeliveryAttempt(attempt: schema.InsertWebhookDeliveryAttempt): Promise<schema.WebhookDeliveryAttempt> {
+    const [created] = await db.insert(schema.webhookDeliveryAttempts)
+      .values(attempt as typeof schema.webhookDeliveryAttempts.$inferInsert)
+      .returning();
+    return created;
+  }
+
+  async updateWebhookDeliveryAttempt(id: string, data: Partial<schema.InsertWebhookDeliveryAttempt>): Promise<schema.WebhookDeliveryAttempt> {
+    const updateData = { ...data, updatedAt: new Date() };
+    const [updated] = await db.update(schema.webhookDeliveryAttempts)
+      .set(updateData as Partial<typeof schema.webhookDeliveryAttempts.$inferInsert>)
+      .where(eq(schema.webhookDeliveryAttempts.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Notification Preferences
+  async getNotificationPreferences(userId: string): Promise<schema.NotificationPreference[]> {
+    return db.select().from(schema.notificationPreferences)
+      .where(eq(schema.notificationPreferences.userId, userId));
+  }
+
+  async getNotificationPreferenceByChannel(userId: string, channel: string): Promise<schema.NotificationPreference | undefined> {
+    const [pref] = await db.select().from(schema.notificationPreferences)
+      .where(and(
+        eq(schema.notificationPreferences.userId, userId),
+        eq(schema.notificationPreferences.channel, channel)
+      ));
+    return pref;
+  }
+
+  async createNotificationPreference(pref: schema.InsertNotificationPreference): Promise<schema.NotificationPreference> {
+    const [created] = await db.insert(schema.notificationPreferences)
+      .values(pref as typeof schema.notificationPreferences.$inferInsert)
+      .returning();
+    return created;
+  }
+
+  async updateNotificationPreference(id: string, data: Partial<schema.InsertNotificationPreference>): Promise<schema.NotificationPreference> {
+    const updateData = { ...data, updatedAt: new Date() };
+    const [updated] = await db.update(schema.notificationPreferences)
+      .set(updateData as Partial<typeof schema.notificationPreferences.$inferInsert>)
+      .where(eq(schema.notificationPreferences.id, id))
+      .returning();
+    return updated;
+  }
+
+  async upsertNotificationPreference(userId: string, channel: string, data: Partial<schema.InsertNotificationPreference>): Promise<schema.NotificationPreference> {
+    const existing = await this.getNotificationPreferenceByChannel(userId, channel);
+    if (existing) {
+      return this.updateNotificationPreference(existing.id, data);
+    }
+    return this.createNotificationPreference({
+      userId,
+      channel,
+      ...data,
+    } as schema.InsertNotificationPreference);
+  }
+
+  // Usage Tracking
+  async recordUsage(record: schema.InsertUsageRecord): Promise<schema.UsageRecord> {
+    const [created] = await db.insert(schema.usageRecords).values(record as typeof schema.usageRecords.$inferInsert).returning();
+    return created;
+  }
+
+  async getUsageRecords(userId: string, featureType?: string, periodStart?: Date, periodEnd?: Date): Promise<schema.UsageRecord[]> {
+    const { and, gte, lte } = await import("drizzle-orm");
+    const conditions = [eq(schema.usageRecords.userId, userId)];
+
+    if (featureType) {
+      conditions.push(eq(schema.usageRecords.featureType, featureType));
+    }
+    if (periodStart) {
+      conditions.push(gte(schema.usageRecords.createdAt, periodStart));
+    }
+    if (periodEnd) {
+      conditions.push(lte(schema.usageRecords.createdAt, periodEnd));
+    }
+
+    return db.select().from(schema.usageRecords).where(and(...conditions)).orderBy(schema.usageRecords.createdAt);
+  }
+
+  async getUsageAggregate(userId: string, featureType: string, periodMonth: string): Promise<schema.UsageAggregate | undefined> {
+    const { and } = await import("drizzle-orm");
+    const [aggregate] = await db.select().from(schema.usageAggregates).where(
+      and(
+        eq(schema.usageAggregates.userId, userId),
+        eq(schema.usageAggregates.featureType, featureType),
+        eq(schema.usageAggregates.periodMonth, periodMonth)
+      )
+    );
+    return aggregate;
+  }
+
+  async upsertUsageAggregate(userId: string, tenantId: string | null, featureType: string, periodMonth: string, increment: number, limit?: number): Promise<schema.UsageAggregate> {
+    const { and, sql } = await import("drizzle-orm");
+    const existing = await this.getUsageAggregate(userId, featureType, periodMonth);
+
+    if (existing) {
+      const [updated] = await db
+        .update(schema.usageAggregates)
+        .set({
+          totalUsage: sql`${schema.usageAggregates.totalUsage} + ${increment}`,
+          usageLimit: limit !== undefined ? limit : existing.usageLimit,
+          lastUpdated: new Date(),
+        })
+        .where(eq(schema.usageAggregates.id, existing.id))
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db.insert(schema.usageAggregates).values({
+      userId,
+      tenantId,
+      featureType,
+      periodMonth,
+      totalUsage: increment,
+      usageLimit: limit ?? null,
+      lastUpdated: new Date(),
+    } as typeof schema.usageAggregates.$inferInsert).returning();
+    return created;
+  }
+
+  async getUserUsageSummary(userId: string, periodMonth: string): Promise<schema.UsageAggregate[]> {
+    const { and } = await import("drizzle-orm");
+    return db.select().from(schema.usageAggregates).where(
+      and(
+        eq(schema.usageAggregates.userId, userId),
+        eq(schema.usageAggregates.periodMonth, periodMonth)
+      )
+    );
+  }
+
+  async getTenantUsageSummary(tenantId: string, periodMonth: string): Promise<schema.UsageAggregate[]> {
+    const { and, sql } = await import("drizzle-orm");
+    // Aggregate usage across all users in the tenant
+    return db.select().from(schema.usageAggregates).where(
+      and(
+        eq(schema.usageAggregates.tenantId, tenantId),
+        eq(schema.usageAggregates.periodMonth, periodMonth)
+      )
+    );
   }
 }
 

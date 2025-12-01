@@ -108,7 +108,7 @@ export default function Features() {
               </Link>
             </div>
 
-            <a href="/api/login">
+            <a href="/login">
               <Button variant="default" size="default" data-testid="button-login">
                 Get Started
               </Button>
@@ -163,7 +163,7 @@ export default function Features() {
           <p className="text-xl mb-8 opacity-90">
             Join thousands of companies using SkillSync AI to build better teams
           </p>
-          <a href="/api/login">
+          <a href="/login">
             <Button size="lg" variant="secondary" className="text-base px-8" data-testid="button-cta-signup">
               Get Started Free
             </Button>

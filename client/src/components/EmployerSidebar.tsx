@@ -8,7 +8,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Home, Briefcase, Users, Target, BarChart3, Settings, CreditCard } from "lucide-react";
+import { Home, Briefcase, Users, Target, BarChart3, Settings, CreditCard, Webhook, Shield, Key } from "lucide-react";
 import { useLocation, Link } from "wouter";
 
 export default function EmployerSidebar() {
@@ -19,7 +19,10 @@ export default function EmployerSidebar() {
     { title: "Jobs", icon: Briefcase, url: "/employer/jobs" },
     { title: "Candidates", icon: Target, url: "/employer/candidates" },
     { title: "Team", icon: Users, url: "/employer/team" },
+    { title: "Permissions", icon: Shield, url: "/employer/team/permissions" },
     { title: "Analytics", icon: BarChart3, url: "/employer/analytics" },
+    { title: "Webhooks", icon: Webhook, url: "/employer/webhooks" },
+    { title: "API Keys", icon: Key, url: "/employer/api" },
     { title: "Billing", icon: CreditCard, url: "/employer/billing" },
     { title: "Settings", icon: Settings, url: "/employer/settings" },
   ];
